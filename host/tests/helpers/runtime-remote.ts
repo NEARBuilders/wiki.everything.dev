@@ -2,7 +2,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BosConfig } from "everything-dev/types";
-import { getNetworkIdForAccount } from "../../../packages/everything-dev/src/network";
+
+function getNetworkIdForAccount(accountId: string): "testnet" | "mainnet" {
+  return accountId.endsWith(".testnet") ? "testnet" : "mainnet";
+}
+
 import { runServer } from "../../src/program";
 import type { RuntimeConfig } from "../../src/services/config";
 import { startJsonProxyTarget } from "./json-proxy-target";

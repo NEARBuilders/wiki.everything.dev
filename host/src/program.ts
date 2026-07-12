@@ -620,6 +620,51 @@ export const createStartServer = (onReady?: () => void) =>
 
     app.get("/health", (c: Context<HonoEnv>) => c.text("OK"));
 
+    app.get("/sitemap.xml", async (c: Context<HonoEnv>) => {
+      const pluginContext = buildPluginContext(c);
+      const apiClient = createPluginsClient(plugins, pluginContext) as any;
+      const domain = config.domain || "wiki.everything.dev";
+
+      const stream = new ReadableStream({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(
+            encoder.encode(
+              '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+            ),
+          );
+
+          let count = 0;
+          try {
+            const iterator = apiClient.streamSitemapSlugs({}) as AsyncIterable<{
+              slug: string;
+              updatedAt: string;
+              subdomain: string;
+            }>;
+
+            for await (const entry of iterator) {
+              if (count >= 50000) break;
+              const loc = `https://${entry.subdomain}.${domain}/w/${entry.slug}`;
+              const lastmod = entry.updatedAt.slice(0, 10);
+              controller.enqueue(
+                encoder.encode(`<url><loc>${loc}</loc><lastmod>${lastmod}</lastmod></url>`),
+              );
+              count++;
+            }
+          } catch {
+            // Best-effort — serve XML with entries streamed so far
+          }
+
+          controller.enqueue(encoder.encode("</urlset>"));
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        headers: { "Content-Type": "application/xml; charset=UTF-8" },
+      });
+    });
+
     const loadingState = {
       status: "ready" as "loading" | "ready" | "failed",
       startTime: Date.now(),
@@ -727,7 +772,8 @@ export const createStartServer = (onReady?: () => void) =>
         pathname.startsWith("/api/") ||
         pathname.startsWith("/__mf/") ||
         pathname.startsWith("/_runtime/") ||
-        pathname === "/health"
+        pathname === "/health" ||
+        pathname === "/sitemap.xml"
       ) {
         return next();
       }

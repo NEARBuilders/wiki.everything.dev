@@ -186,24 +186,40 @@ function createClientConfig() {
       },
     },
     tools: {
-      rspack: {
-        target: "web",
-        output: {
+      rspack: (config) => {
+        config.target = "web";
+        config.output = {
+          ...config.output,
           uniqueName: normalizedName,
           chunkFilename: "static/js/async/[name].[contenthash].js",
-        },
-        resolve: {
+        };
+        config.resolve = {
+          ...config.resolve,
           fallback: { bufferutil: false, "utf-8-validate": false },
-        },
-        infrastructureLogging: { level: "error" },
-        stats: "errors-warnings",
-        plugins: [
+        };
+        config.infrastructureLogging = { level: "error" };
+        config.stats = "errors-warnings";
+
+        for (const plugin of config.plugins ?? []) {
+          if (
+            (plugin as { constructor?: { name?: string } })?.constructor?.name ===
+            "CssExtractRspackPlugin"
+          ) {
+            (plugin as unknown as { options: { chunkFilename?: string } }).options.chunkFilename =
+              "static/css/async/[name].[contenthash].css";
+          }
+        }
+
+        config.plugins = [
+          ...(config.plugins ?? []),
           TanStackRouterRspack({
             target: "react",
             autoCodeSplitting: true,
           }),
           new FixMfDataUriPlugin(),
-        ],
+        ];
+
+        return config;
       },
     },
     output: {

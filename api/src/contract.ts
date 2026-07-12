@@ -2,28 +2,48 @@ import { BAD_REQUEST, FORBIDDEN, NOT_FOUND, UNAUTHORIZED } from "every-plugin/er
 import { eventIterator, oc } from "every-plugin/orpc";
 import { z } from "every-plugin/zod";
 
-export const ThingSchema = z.object({
-  thingId: z.string(),
-  pluginId: z.string(),
-  type: z.string(),
-  payload: z.unknown(),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
+export const WikiSchema = z.object({
+  id: z.string(),
+  subdomain: z.string(),
+  accountId: z.string(),
+  orgId: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
 });
 
-export type Thing = z.infer<typeof ThingSchema>;
+export type Wiki = z.infer<typeof WikiSchema>;
 
-export const ThingEventSchema = z.object({
-  pluginId: z.string(),
-  thingId: z.string(),
-  action: z.string(),
-  type: z.string(),
-  timestamp: z.iso.datetime(),
-  userId: z.string().optional(),
-  totalCount: z.number().int().nonnegative().optional(),
+export const ArticleSchema = z.object({
+  id: z.string(),
+  wikiId: z.string(),
+  slug: z.string(),
+  title: z.string(),
+  content: z.unknown().nullable(),
+  currentRevisionId: z.string().nullable(),
+  updatedAt: z.string(),
 });
 
-export type ThingEvent = z.infer<typeof ThingEventSchema>;
+export type Article = z.infer<typeof ArticleSchema>;
+
+export const RevisionSchema = z.object({
+  id: z.string(),
+  articleId: z.string(),
+  parentId: z.string().nullable(),
+  content: z.string(),
+  authorId: z.string(),
+  signature: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export type Revision = z.infer<typeof RevisionSchema>;
+
+export const SitemapEntrySchema = z.object({
+  slug: z.string(),
+  updatedAt: z.string(),
+  subdomain: z.string(),
+});
+
+export type SitemapEntry = z.infer<typeof SitemapEntrySchema>;
 
 export const contract = oc.router({
   ping: oc.route({ method: "GET", path: "/ping" }).output(
@@ -44,131 +64,126 @@ export const contract = oc.router({
     )
     .errors({ UNAUTHORIZED }),
 
-  createThing: oc
-    .route({ method: "POST", path: "/things" })
+  createWiki: oc
+    .route({ method: "POST", path: "/wikis" })
     .input(
       z.object({
-        pluginId: z.string().min(1).max(100),
-        payload: z.unknown(),
+        subdomain: z.string(),
+        name: z.string(),
+        accountId: z.string(),
+        orgId: z.string(),
       }),
     )
-    .output(ThingSchema)
+    .output(WikiSchema)
     .errors({ UNAUTHORIZED, BAD_REQUEST }),
 
-  getThing: oc
-    .route({ method: "GET", path: "/things/{thingId}" })
-    .input(z.object({ thingId: z.string() }))
-    .output(ThingSchema)
+  resolveWiki: oc
+    .route({ method: "GET", path: "/wikis/account/{accountId}" })
+    .input(z.object({ accountId: z.string() }))
+    .output(WikiSchema)
     .errors({ NOT_FOUND }),
 
-  upvoteThing: oc
-    .route({ method: "POST", path: "/upvotes" })
-    .input(z.object({ thingId: z.string() }))
+  getArticle: oc
+    .route({ method: "GET", path: "/articles/{wikiId}/{slug}" })
+    .input(z.object({ wikiId: z.string(), slug: z.string() }))
     .output(
       z.object({
-        thingId: z.string(),
-        userId: z.string(),
-        totalCount: z.number().int().nonnegative(),
-      }),
-    )
-    .errors({ UNAUTHORIZED, BAD_REQUEST, NOT_FOUND }),
-
-  downvoteThing: oc
-    .route({ method: "DELETE", path: "/upvotes/{thingId}" })
-    .input(z.object({ thingId: z.string() }))
-    .output(
-      z.object({
-        thingId: z.string(),
-        totalCount: z.number().int().nonnegative(),
-      }),
-    )
-    .errors({ UNAUTHORIZED, NOT_FOUND }),
-
-  getUpvoteCount: oc
-    .route({ method: "GET", path: "/upvotes/{thingId}/count" })
-    .input(z.object({ thingId: z.string() }))
-    .output(
-      z.object({
-        thingId: z.string(),
-        totalCount: z.number().int().nonnegative(),
+        article: ArticleSchema,
+        canEdit: z.boolean(),
       }),
     )
     .errors({ NOT_FOUND }),
 
-  getUserVote: oc
-    .route({ method: "GET", path: "/upvotes/{thingId}/me" })
-    .input(z.object({ thingId: z.string() }))
-    .output(
-      z.object({
-        thingId: z.string(),
-        hasUpvote: z.boolean(),
-      }),
-    )
-    .errors({ UNAUTHORIZED, NOT_FOUND }),
-
-  getUserVotes: oc
-    .route({ method: "POST", path: "/upvotes/me/batch" })
-    .input(z.object({ thingIds: z.array(z.string()).min(1).max(100) }))
-    .output(
-      z.record(
-        z.string(),
-        z.object({
-          thingId: z.string(),
-          hasUpvote: z.boolean(),
-        }),
-      ),
-    )
-    .errors({ UNAUTHORIZED }),
-
-  getUpvoteCounts: oc
-    .route({ method: "POST", path: "/upvotes/counts" })
-    .input(z.object({ thingIds: z.array(z.string()).min(1).max(100) }))
-    .output(
-      z.record(
-        z.string(),
-        z.object({
-          thingId: z.string(),
-          totalCount: z.number().int().nonnegative(),
-        }),
-      ),
-    ),
-
-  getUpvoteFeed: oc
-    .route({ method: "GET", path: "/upvotes/feed" })
+  createArticle: oc
+    .route({ method: "POST", path: "/articles/{wikiId}/{slug}" })
     .input(
       z.object({
-        limit: z.number().int().min(1).max(100).optional(),
+        wikiId: z.string(),
+        slug: z.string(),
+        title: z.string(),
+        content: z.unknown(),
+        signature: z.string().optional(),
+      }),
+    )
+    .output(ArticleSchema)
+    .errors({ UNAUTHORIZED, FORBIDDEN, BAD_REQUEST }),
+
+  updateArticle: oc
+    .route({ method: "PUT", path: "/articles/{wikiId}/{slug}" })
+    .input(
+      z.object({
+        wikiId: z.string(),
+        slug: z.string(),
+        content: z.unknown(),
+        parentRevisionId: z.string(),
+        signature: z.string().optional(),
+      }),
+    )
+    .output(ArticleSchema)
+    .errors({ UNAUTHORIZED, FORBIDDEN, NOT_FOUND, BAD_REQUEST }),
+
+  getHistory: oc
+    .route({ method: "GET", path: "/articles/{articleId}/history" })
+    .input(
+      z.object({
+        articleId: z.string(),
         cursor: z.string().optional(),
       }),
     )
     .output(
       z.object({
-        data: z.array(ThingEventSchema),
+        revisions: z.array(RevisionSchema),
+        authors: z.record(z.string(), z.object({ name: z.string().optional() })),
+        nextCursor: z.string().nullable(),
+      }),
+    )
+    .errors({}),
+
+  listArticles: oc
+    .route({ method: "GET", path: "/wikis/{wikiId}/articles" })
+    .input(
+      z.object({
+        wikiId: z.string(),
+        cursor: z.string().optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+      }),
+    )
+    .output(
+      z.object({
+        data: z.array(ArticleSchema),
         meta: z.object({
-          total: z.number().int().nonnegative(),
           hasMore: z.boolean(),
           nextCursor: z.string().nullable(),
         }),
       }),
-    ),
+    )
+    .errors({}),
 
-  deleteThing: oc
-    .route({ method: "DELETE", path: "/things/{thingId}" })
-    .input(z.object({ thingId: z.string() }))
-    .output(z.object({ success: z.literal(true) }))
-    .errors({ UNAUTHORIZED, NOT_FOUND, FORBIDDEN }),
-
-  subscribeThings: oc
-    .route({ method: "GET", path: "/things/stream" })
+  searchArticles: oc
+    .route({ method: "GET", path: "/wikis/{wikiId}/search" })
     .input(
       z.object({
-        thingId: z.string().optional(),
-        pluginId: z.string().optional(),
-        type: z.string().optional(),
-        action: z.string().optional(),
+        wikiId: z.string(),
+        q: z.string().min(1).max(200),
+        cursor: z.string().optional(),
+        limit: z.number().int().min(1).max(100).optional(),
       }),
     )
-    .output(eventIterator(ThingEventSchema)),
+    .output(
+      z.object({
+        data: z.array(ArticleSchema),
+        meta: z.object({
+          hasMore: z.boolean(),
+          nextCursor: z.string().nullable(),
+        }),
+      }),
+    )
+    .errors({}),
+
+  streamSitemapSlugs: oc
+    .route({ method: "GET", path: "/sitemap/stream" })
+    .input(z.object({ wikiId: z.string().optional() }))
+    .output(eventIterator(SitemapEntrySchema)),
 });
 
 export type ContractType = typeof contract;

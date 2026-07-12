@@ -1,125 +1,316 @@
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AnimatePresence, motion } from "framer-motion";
-import { Copy, ExternalLink, Sparkles } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-
-type SearchParams = {
-  path?: string;
-};
+import { Compass, FileText, Plus } from "lucide-react";
+import { useMemo } from "react";
+import { sessionQueryOptions, useApiClient, useAuthClient } from "@/app";
+import { ArticleSearch } from "@/components/article-search";
+import { EmptyState } from "@/components/empty-state";
+import { RecentChangesList } from "@/components/recent-changes-list";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/_layout/")({
-  validateSearch: (search: Record<string, unknown>): SearchParams => ({
-    path: typeof search.path === "string" && search.path.length > 0 ? search.path : undefined,
+  head: () => ({
+    meta: [
+      { title: "Main page | Wiki" },
+      { name: "description", content: "Browse, contribute, and explore the wiki." },
+    ],
   }),
-  component: HomeViewerPage,
+  component: WikiHome,
 });
 
-function HomeViewerPage() {
-  const { path } = Route.useSearch();
-  const iframeSrc = path ? `./_viewer?path=${encodeURIComponent(path)}` : "./_viewer";
+function WikiHome() {
+  const { wiki } = Route.useRouteContext();
+  const apiClient = useApiClient();
+  const auth = useAuthClient();
+  const { data: session } = useQuery(sessionQueryOptions(auth, undefined));
+
+  const wikiId = wiki?.id ?? "";
+  const activeOrgId = session?.session?.activeOrganizationId ?? null;
+  const isMember = !!wiki && !!activeOrgId && activeOrgId === wiki.orgId;
+  const isAdmin = session?.user?.role === "admin";
+  const canEdit = isMember || isAdmin;
+
+  const allArticles = useInfiniteQuery({
+    queryKey: ["articles", "index", wikiId],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => apiClient.listArticles({ wikiId, cursor: pageParam, limit: 100 }),
+    getNextPageParam: (last) =>
+      last.meta.hasMore ? (last.meta.nextCursor ?? undefined) : undefined,
+    enabled: !!wikiId,
+    staleTime: 60_000,
+  });
+
+  const flat = useMemo(
+    () => allArticles.data?.pages.flatMap((p) => p.data) ?? [],
+    [allArticles.data],
+  );
+
+  const byLetter = useMemo(() => {
+    const buckets = new Map<string, { slug: string; title: string; id: string }[]>();
+    for (const a of flat) {
+      const first = (a.title[0] ?? a.slug[0] ?? "#").toUpperCase();
+      const key = /[A-Z]/.test(first) ? first : "#";
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)?.push({ slug: a.slug, title: a.title, id: a.id });
+    }
+    for (const list of buckets.values()) {
+      list.sort((a, b) => a.title.localeCompare(b.title));
+    }
+    return buckets;
+  }, [flat]);
+
+  const totalCount = flat.length + (allArticles.hasNextPage ? "+" : "");
+
+  if (!wiki) {
+    return <NoWikiHero />;
+  }
 
   return (
-    <div className="relative h-full w-full bg-background">
-      <iframe
-        title="BOS viewer"
-        src={iframeSrc}
-        loading="eager"
-        allow="clipboard-read; clipboard-write"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-        className="block h-full w-full border-0 bg-background"
+    <div className="w-full">
+      <Hero
+        title={wiki.name}
+        subdomain={wiki.subdomain}
+        wikiId={wikiId}
+        totalCount={String(totalCount)}
+        canEdit={canEdit}
       />
-      <FloatingSkillAssistant />
+
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8 space-y-12">
+        <section className="space-y-4">
+          <SectionHeader
+            title="Recent changes"
+            action={
+              <Link
+                to="/recent"
+                preload="intent"
+                className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                view all →
+              </Link>
+            }
+          />
+          <RecentChangesList wikiId={wikiId} limit={6} />
+        </section>
+
+        <section className="space-y-4">
+          <SectionHeader
+            title="Explore"
+            action={
+              <Link
+                to="/explore"
+                preload="intent"
+                className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                open explorer →
+              </Link>
+            }
+          />
+          {allArticles.isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-[12px]" />
+              ))}
+            </div>
+          ) : flat.length === 0 ? (
+            <EmptyArticles canEdit={canEdit} />
+          ) : (
+            <AlphaGrid byLetter={byLetter} />
+          )}
+        </section>
+      </div>
     </div>
   );
 }
 
-function FloatingSkillAssistant() {
-  const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const issueUrl = "https://github.com/NEARBuilders/everything-dev/issues/new";
+function Hero({
+  title,
+  subdomain,
+  wikiId,
+  totalCount,
+  canEdit,
+}: {
+  title: string;
+  subdomain: string;
+  wikiId: string;
+  totalCount: string;
+  canEdit: boolean;
+}) {
+  return (
+    <section className="border-b border-border bg-gradient-to-b from-muted to-background">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-10 sm:py-14 space-y-6">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-[6px] border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+              Wiki
+            </span>
+            <span className="text-[11px] font-mono text-muted-foreground">{subdomain}</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+            Welcome to {title}
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground max-w-2xl">
+            {totalCount} pages and growing. Search, browse, and contribute below.
+          </p>
+        </div>
 
-  const handleCopy = async () => {
-    const rawSkillUrl = "/skill.md";
-    await navigator.clipboard.writeText(rawSkillUrl);
-    setCopied(true);
-    toast.success("Skill URL copied");
-    setTimeout(() => setCopied(false), 2000);
-  };
+        <div className="max-w-2xl">
+          <ArticleSearch wikiId={wikiId} placeholder={`Search ${title}...`} />
+        </div>
+
+        {canEdit && (
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/w/$slug/edit"
+              params={{ slug: "new" }}
+              preload="intent"
+              className="h-10 px-4 inline-flex items-center gap-1.5 text-sm font-semibold border-2 border-outset border-border-strong bg-foreground text-background shadow-sm hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out rounded-[12px]"
+            >
+              <Plus className="h-4 w-4" />
+              new article
+            </Link>
+            <Link
+              to="/admin"
+              preload="intent"
+              className="h-10 px-4 inline-flex items-center gap-1.5 text-sm font-medium border-2 border-outset border-border-strong bg-card text-foreground shadow-sm hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out rounded-[12px]"
+            >
+              wiki admin
+            </Link>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex items-end justify-between gap-3">
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      {action}
+    </div>
+  );
+}
+
+function AlphaGrid({
+  byLetter,
+}: {
+  byLetter: Map<string, { slug: string; title: string; id: string }[]>;
+}) {
+  const letters = Array.from(byLetter.keys()).sort((a, b) => a.localeCompare(b));
+
+  if (letters.length === 0) {
+    return <p className="text-sm text-muted-foreground">No pages to explore yet.</p>;
+  }
 
   return (
-    <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="pointer-events-auto w-[min(22rem,calc(100vw-2rem))] rounded-[24px] border border-border bg-card/95 p-4 shadow-2xl backdrop-blur"
+    <div className="space-y-6">
+      <div className="flex flex-wrap gap-1.5">
+        {letters.map((letter) => (
+          <a
+            key={letter}
+            href={`#letter-${letter}`}
+            className="inline-flex items-center justify-center w-8 h-8 text-xs font-bold border-2 border-outset border-border-strong bg-card text-foreground shadow-sm hover:shadow-md hover:bg-muted active:border-inset active:shadow-none transition-all duration-200 ease-out rounded-[8px]"
           >
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Sparkles size={16} />
-              Assistant
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button asChild className="justify-start">
-                <Link to="/skill" preload="intent" onClick={() => setOpen(false)}>
-                  <Sparkles size={14} />
-                  Open skill
-                </Link>
-              </Button>
-              <Button variant="outline" asChild className="justify-start">
-                <a href={issueUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink size={14} />
-                  Report issue
-                </a>
-              </Button>
-              <Button variant="outline" asChild className="justify-start">
-                <Link to="/about" preload="intent" onClick={() => setOpen(false)}>
-                  <ExternalLink size={14} />
-                  About
-                </Link>
-              </Button>
-              <Button variant="outline" className="justify-start" onClick={handleCopy}>
-                <Copy size={14} />
-                {copied ? "Copied URL" : "Copy skill URL"}
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {letter}
+          </a>
+        ))}
+      </div>
 
-      <motion.button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        animate={
-          open
-            ? { y: 0, scale: 1.02 }
-            : {
-                y: [0, -34, 0, -15, 0, -6, 0],
-                scale: [1, 1.02, 0.97, 1.01, 0.992, 1, 1],
-              }
-        }
-        transition={
-          open
-            ? { duration: 0.25, ease: "easeOut" }
-            : {
-                duration: 2.8,
-                ease: [0.22, 1, 0.36, 1],
-                repeat: Number.POSITIVE_INFINITY,
-                times: [0, 0.18, 0.34, 0.5, 0.66, 0.8, 1],
-              }
-        }
-        whileTap={{ scale: 0.97 }}
-        aria-expanded={open}
-        aria-label={open ? "Close assistant" : "Open assistant"}
-        className="pointer-events-auto relative h-24 w-24 cursor-pointer rounded-full border border-white/10 bg-black text-white shadow-[0_20px_50px_rgba(0,0,0,0.45)]"
-      >
-        <span className="absolute inset-[10%] rounded-full bg-[radial-gradient(circle_at_30%_28%,rgba(255,255,255,0.24),rgba(255,255,255,0.05)_28%,transparent_44%)]" />
-        <span className="absolute inset-[18%] rounded-full border border-white/6" />
-      </motion.button>
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {letters.slice(0, 12).map((letter) => (
+          <div
+            key={letter}
+            id={`letter-${letter}`}
+            className="border-2 border-outset border-border-strong bg-card rounded-[12px] p-4 space-y-2 shadow-sm"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xl font-bold text-foreground">{letter}</span>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {byLetter.get(letter)?.length ?? 0} pages
+              </span>
+            </div>
+            <ul className="space-y-1">
+              {byLetter
+                .get(letter)
+                ?.slice(0, 8)
+                .map((a) => (
+                  <li key={a.id}>
+                    <Link
+                      to="/w/$slug"
+                      params={{ slug: a.slug }}
+                      preload="intent"
+                      className="text-sm text-foreground hover:underline underline-offset-2 truncate block"
+                    >
+                      {a.title}
+                    </Link>
+                  </li>
+                ))}
+            </ul>
+            {(byLetter.get(letter)?.length ?? 0) > 8 && (
+              <Link
+                to="/explore"
+                preload="intent"
+                className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                + {(byLetter.get(letter)?.length ?? 0) - 8} more →
+              </Link>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
+  );
+}
+
+function EmptyArticles({ canEdit }: { canEdit: boolean }) {
+  return (
+    <div className="border-2 border-dashed border-border rounded-[12px] p-10 text-center space-y-4">
+      <FileText className="h-10 w-10 mx-auto text-muted-foreground" />
+      <div className="space-y-1">
+        <p className="text-base font-semibold text-foreground">No pages yet</p>
+        <p className="text-sm text-muted-foreground">
+          {canEdit ? "Kick things off with the first article." : "Check back soon."}
+        </p>
+      </div>
+      {canEdit && (
+        <Link
+          to="/w/$slug/edit"
+          params={{ slug: "new" }}
+          preload="intent"
+          className="h-10 px-4 inline-flex items-center gap-1.5 text-sm font-semibold border-2 border-outset border-border-strong bg-foreground text-background shadow-sm hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out rounded-[12px]"
+        >
+          <Plus className="h-4 w-4" />
+          create the first article
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function NoWikiHero() {
+  return (
+    <EmptyState
+      title="Start a new wiki"
+      action={
+        <div className="flex flex-wrap justify-center gap-3">
+          <Link
+            to="/wiki/new"
+            preload="intent"
+            className="h-11 px-5 inline-flex items-center gap-2 text-sm font-semibold border-2 border-outset border-border-strong bg-foreground text-background shadow-sm hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out rounded-[12px]"
+          >
+            <Plus className="h-4 w-4" />
+            start a wiki
+          </Link>
+          <Link
+            to="/about"
+            preload="intent"
+            className="h-11 px-5 inline-flex items-center gap-2 text-sm font-medium border-2 border-outset border-border-strong bg-card text-foreground shadow-sm hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out rounded-[12px]"
+          >
+            <Compass className="h-4 w-4" />
+            learn more
+          </Link>
+        </div>
+      }
+    />
   );
 }

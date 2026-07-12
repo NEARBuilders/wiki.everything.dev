@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router"
 import { useState } from "react";
 import { toast } from "sonner";
 import { type SessionData, sessionQueryOptions, useAuthClient } from "@/app";
-import { Button, Input } from "@/components";
+import { Button, Card, Input } from "@/components";
 
 export const Route = createFileRoute("/_layout/_authenticated/settings/security")({
   component: SecuritySettings,
@@ -75,7 +75,7 @@ function SecurityTab({ user }: { user: { email?: string; isAnonymous?: boolean |
   return (
     <div className="space-y-4">
       {user.email ? (
-        <div className="rounded-[12px] border border-border bg-card p-6 space-y-4">
+        <Card className="p-6 space-y-4">
           <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
             Change password
           </div>
@@ -114,15 +114,14 @@ function SecurityTab({ user }: { user: { email?: string; isAnonymous?: boolean |
               !confirmPassword
             }
             variant="outline"
-            size="sm"
           >
             {changePasswordMutation.isPending ? "changing..." : "change password"}
           </Button>
-        </div>
+        </Card>
       ) : (
-        <div className="rounded-[12px] border border-border bg-card p-6 text-sm text-muted-foreground">
+        <Card className="p-6 text-sm text-muted-foreground">
           Password management appears once an email-based login is attached to this account.
-        </div>
+        </Card>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -170,14 +169,14 @@ function ActionCard({
   disabled: boolean;
 }) {
   return (
-    <div className="rounded-[12px] border border-border bg-card p-5 space-y-3">
+    <Card className="p-6 space-y-3">
       <div className="space-y-1">
         <div className="font-medium text-foreground">{title}</div>
         <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
       </div>
-      <Button onClick={onClick} disabled={disabled} variant="outline" size="sm">
+      <Button onClick={onClick} disabled={disabled} variant="outline">
         {actionLabel}
       </Button>
-    </div>
+    </Card>
   );
 }

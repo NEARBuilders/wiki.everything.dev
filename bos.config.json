@@ -2,8 +2,8 @@
   "extends": "bos://dev.everything.near/dev.everything.dev",
   "account": "wiki.everything.near",
   "domain": "wiki.everything.dev",
-  "title": "everything.dev",
-  "description": "Open runtime for apps on NEAR, composed from published config and loaded through a shared host, UI, and API runtime.",
+  "title": "every wiki",
+  "description": "Wiki platform on everything.dev — multi-tenant collaborative wikis with NEAR subaccount tenancy.",
   "staging": {
     "domain": "dev.everything.dev"
   },
@@ -35,8 +35,22 @@
     }
   },
   "plugins": {
-    "template": {
-      "development": "local:plugins/_template"
+    "apps": {
+      "production": "https://elliot-braem-5538-everything-dev-apps-plugin-ever-506815daf-ze.zephyrcloud.app",
+      "variables": {
+        "registryNamespace": "dev.everything.near"
+      },
+      "routes": [
+        "ui/src/routes/_layout/apps/**",
+        "ui/src/routes/_layout/index.tsx"
+      ],
+      "integrity": "sha384-y5as26pVYL/eEMFqvH1L4JOZ6sNaE/WOpg3OPhFfzU6OYa1lbKFNZw6zn5Mk/0dU"
+    },
+    "wiki-editor-collaborative": {
+      "development": "local:plugins/wiki-editor-collaborative"
+    },
+    "wiki-media": {
+      "development": "local:plugins/wiki-media"
     }
   }
 }

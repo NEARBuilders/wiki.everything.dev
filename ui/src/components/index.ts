@@ -4,8 +4,16 @@ export {
   ApiKeyReveal,
   type ApiKeyRevealProps,
 } from "./api-key-manager";
+export { ArticleActionsBar } from "./article-actions-bar";
+export { ArticleDiff } from "./article-diff";
+export { ArticleRenderer } from "./article-renderer";
+export { ArticleSearch } from "./article-search";
+export { ArticleToc } from "./article-toc";
+export { BrandElement } from "./brand-element";
 export { ConfirmDialog } from "./confirm-dialog";
+export { ContributeMenu } from "./contribute-menu";
 export { OrgSwitcher } from "./org-switcher";
+export { RecentChangesList } from "./recent-changes-list";
 export { Badge } from "./ui/badge";
 export { Button } from "./ui/button";
 export {
@@ -35,3 +43,5 @@ export { ScrollArea, ScrollBar } from "./ui/scroll-area";
 export { Skeleton } from "./ui/skeleton";
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 export { UnderConstruction } from "./under-construction";
+export { WikiHeader } from "./wiki-header";
+export { WikiSidebar } from "./wiki-sidebar";

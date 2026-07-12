@@ -1,20 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ClipboardList, Compass, Home as HomeIcon, Plus, Settings, Shield } from "lucide-react";
 import { useMemo } from "react";
 import { type Passkey, type SessionData, sessionQueryOptions, useAuthClient } from "@/app";
+import { Card } from "@/components";
+import { PageContainer } from "@/components/layout/page-container";
 
 export const Route = createFileRoute("/_layout/_authenticated/home")({
   head: () => ({
-    meta: [
-      { title: "Workspace | app" },
-      { name: "description", content: "Your workspace center." },
-    ],
+    meta: [{ title: "Workspace | Wiki" }, { name: "description", content: "Your workspace." }],
   }),
   component: Home,
 });
 
 function Home() {
   const auth = useAuthClient();
+  const { wiki } = Route.useRouteContext();
   const { data: session } = useQuery<SessionData | null>(sessionQueryOptions(auth, undefined));
   const { data: passkeys = [] } = useQuery({
     queryKey: ["passkeys"],
@@ -45,74 +46,127 @@ function Home() {
     };
   }, [user, nearAccountId, passkeys.length]);
 
+  const activeOrgId = session?.session?.activeOrganizationId ?? null;
+  const isMember = !!wiki && !!activeOrgId && activeOrgId === wiki.orgId;
+
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5 sm:px-6 sm:py-3">
-        <h1 className="text-xl font-semibold text-foreground">Workspace</h1>
-        <Link
-          to="/settings"
-          preload="intent"
-          className="h-9 rounded-[12px] bg-primary px-4 text-sm font-bold text-primary-foreground inline-flex items-center no-underline transition-colors duration-150 hover:opacity-90"
-        >
-          Settings
-        </Link>
-      </div>
+    <PageContainer variant="wide">
+      <div className="space-y-8">
+        <header className="space-y-2">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            <HomeIcon className="h-3 w-3" />
+            Workspace
+          </div>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+                {user?.name || user?.email || "You"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Manage your identity and jump back into the wiki.
+              </p>
+            </div>
+            <Link
+              to="/settings"
+              preload="intent"
+              className="h-10 px-4 inline-flex items-center gap-1.5 text-sm font-medium border-2 border-outset border-border-strong bg-card text-foreground shadow-sm hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out rounded-[12px]"
+            >
+              <Settings className="h-4 w-4" />
+              settings
+            </Link>
+          </div>
+        </header>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="mx-auto max-w-3xl space-y-6">
-          {!user ? (
-            <div className="text-muted-foreground text-center py-12 text-sm">Loading…</div>
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <QuickCard title="Main page" desc="Browse the wiki" to="/" icon={HomeIcon} />
+          <QuickCard title="Explore" desc="Every page A–Z" to="/explore" icon={Compass} />
+          <QuickCard title="Recent changes" desc="Latest edits" to="/recent" icon={ClipboardList} />
+          {isMember ? (
+            <QuickCard title="Wiki admin" desc="Manage articles" to="/admin" icon={Shield} />
           ) : (
-            <>
-              <div className="rounded-[12px] border border-border bg-card p-6">
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                  <Chip>workspace</Chip>
-                  {profile.isAnonymous && <Chip>anonymous</Chip>}
-                  {profile.isAdmin && <Chip accent>admin</Chip>}
-                </div>
-                <h2 className="text-foreground text-2xl font-semibold mb-1">
-                  {user.name || user.email || user.id.slice(0, 8)}
-                </h2>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  Manage your identity and connected accounts.
-                </p>
-              </div>
-
-              <div className="rounded-[12px] border border-border bg-card p-6">
-                <div className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider mb-4">
-                  Identity Status
-                </div>
-                <div className="flex flex-col gap-2">
-                  <InfoRow
-                    label="email"
-                    value={profile.hasEmail ? (user.email ?? "linked") : "not linked"}
-                  />
-                  <InfoRow
-                    label="near"
-                    value={profile.hasNear ? (nearAccountId ?? "linked") : "not linked"}
-                    mono
-                  />
-                  <InfoRow
-                    label="passkeys"
-                    value={profile.hasPasskeys ? `${passkeys.length} registered` : "not linked"}
-                  />
-                  <InfoRow
-                    label="profile"
-                    value={profile.isAnonymous ? "anonymous session" : "persistent account"}
-                  />
-                </div>
-
-                {profile.isAnonymous && (
-                  <div className="mt-4 rounded-[8px] bg-brand-accent-light border border-brand-accent-border text-foreground text-[13px] leading-relaxed px-4 py-3">
-                    Link an email or NEAR wallet before signing out to keep your data.
-                  </div>
-                )}
-              </div>
-            </>
+            <QuickCard title="Start a wiki" desc="Create your own" to="/wiki/new" icon={Plus} />
           )}
-        </div>
+        </section>
+
+        {!user ? (
+          <div className="text-muted-foreground text-center py-12 text-sm">Loading…</div>
+        ) : (
+          <>
+            <Card className="p-6 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip>workspace</Chip>
+                {profile.isAnonymous && <Chip>anonymous</Chip>}
+                {profile.isAdmin && <Chip accent>admin</Chip>}
+                {isMember && <Chip accent>wiki member</Chip>}
+              </div>
+              <h2 className="text-foreground text-xl font-semibold">
+                {user.name || user.email || user.id.slice(0, 8)}
+              </h2>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                Manage your identity and connected accounts.
+              </p>
+            </Card>
+
+            <Card className="p-6 space-y-4">
+              <div className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                Identity Status
+              </div>
+              <div className="flex flex-col gap-2">
+                <InfoRow
+                  label="email"
+                  value={profile.hasEmail ? (user.email ?? "linked") : "not linked"}
+                />
+                <InfoRow
+                  label="near"
+                  value={profile.hasNear ? (nearAccountId ?? "linked") : "not linked"}
+                  mono
+                />
+                <InfoRow
+                  label="passkeys"
+                  value={profile.hasPasskeys ? `${passkeys.length} registered` : "not linked"}
+                />
+                <InfoRow
+                  label="profile"
+                  value={profile.isAnonymous ? "anonymous session" : "persistent account"}
+                />
+              </div>
+
+              {profile.isAnonymous && (
+                <div className="mt-2 rounded-[10px] bg-brand-accent-light border border-brand-accent-border text-foreground text-[13px] leading-relaxed px-4 py-3">
+                  Link an email or NEAR wallet before signing out to keep your data.
+                </div>
+              )}
+            </Card>
+          </>
+        )}
       </div>
-    </div>
+    </PageContainer>
+  );
+}
+
+function QuickCard({
+  title,
+  desc,
+  to,
+  icon: Icon,
+}: {
+  title: string;
+  desc: string;
+  to: "/" | "/explore" | "/recent" | "/admin" | "/wiki/new";
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <Link
+      to={to}
+      preload="intent"
+      className="group border-2 border-outset border-border-strong bg-card p-4 rounded-[12px] shadow-sm hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out flex flex-col gap-2"
+    >
+      <div className="flex items-center justify-center w-9 h-9 border-2 border-inset border-border-strong bg-muted rounded-[8px]">
+        <Icon className="h-4 w-4 text-foreground" />
+      </div>
+      <div className="text-sm font-semibold text-foreground">{title}</div>
+      <div className="text-[11px] text-muted-foreground">{desc}</div>
+    </Link>
   );
 }
 

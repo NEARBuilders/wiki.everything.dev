@@ -1,6 +1,8 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Settings } from "lucide-react";
 import { sessionQueryOptions } from "@/app";
 import { Tabs, TabsList, TabsTrigger } from "@/components";
+import { PageContainer } from "@/components/layout/page-container";
 
 export const Route = createFileRoute("/_layout/_authenticated/settings")({
   head: () => ({
@@ -30,26 +32,37 @@ function SettingsLayout() {
     tabs.find((t) => pathname === t.to || pathname.startsWith(`${t.to}/`))?.value ?? "profile";
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5 sm:px-6 sm:py-3">
-        <h1 className="text-xl font-semibold text-foreground">Settings</h1>
-      </div>
+    <PageContainer variant="wide">
+      <div className="space-y-6">
+        <header className="space-y-2">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            <Settings className="h-3 w-3" />
+            Account
+          </div>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+                Settings
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Manage your account identity and security.
+              </p>
+            </div>
+          </div>
+        </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-        <div className="mx-auto max-w-3xl space-y-6">
-          <Tabs value={activeTab} className="w-full min-w-0">
-            <TabsList className="w-full justify-start overflow-x-auto">
-              {tabs.map((tab) => (
-                <TabsTrigger key={tab.value} value={tab.value} asChild className="shrink-0">
-                  <Link to={tab.to}>{tab.label}</Link>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+        <Tabs value={activeTab} className="w-full min-w-0">
+          <TabsList className="w-full justify-start overflow-x-auto">
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} asChild className="shrink-0">
+                <Link to={tab.to}>{tab.label}</Link>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-          <Outlet />
-        </div>
+        <Outlet />
       </div>
-    </div>
+    </PageContainer>
   );
 }
