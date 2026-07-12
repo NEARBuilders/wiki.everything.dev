@@ -59,7 +59,12 @@ interface AppDetailContentProps {
 
 const BASE_RUNTIME = "bos://dev.everything.near/everything.dev";
 
-export function AppDetailContent({ accountId, gatewayId, app, statusQuery }: AppDetailContentProps) {
+export function AppDetailContent({
+  accountId,
+  gatewayId,
+  app,
+  statusQuery,
+}: AppDetailContentProps) {
   const queryClient = useQueryClient();
   const apiClient = useApiClient();
   const auth = useAuthClient();
@@ -225,10 +230,7 @@ export function AppDetailContent({ accountId, gatewayId, app, statusQuery }: App
           {copiedUri ? (
             <Check size={11} className="shrink-0 text-green-500" />
           ) : (
-            <Copy
-              size={11}
-              className="shrink-0 transition-opacity"
-            />
+            <Copy size={11} className="shrink-0 transition-opacity" />
           )}
         </button>
 
@@ -277,9 +279,7 @@ export function AppDetailContent({ accountId, gatewayId, app, statusQuery }: App
           <RuntimeRow label="ui" value={app.uiUrl} />
           <RuntimeRow label="api" value={app.apiUrl} />
           {app.uiSsrUrl && <RuntimeRow label="ssr" value={app.uiSsrUrl} />}
-          {app.extends && (
-            <RuntimeRow label="extends" value={app.extends} isUrl={false} mono />
-          )}
+          {app.extends && <RuntimeRow label="extends" value={app.extends} isUrl={false} mono />}
           {isTenant && (
             <div className="rounded-lg border border-border bg-muted/30 px-3.5 py-3 space-y-1">
               <p className="text-xs text-muted-foreground leading-relaxed">
@@ -425,11 +425,7 @@ export function AppDetailContent({ accountId, gatewayId, app, statusQuery }: App
             </FormField>
 
             <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => publishMutation.mutate()}
-                disabled={isAnyPending}
-                size="sm"
-              >
+              <Button onClick={() => publishMutation.mutate()} disabled={isAnyPending} size="sm">
                 {publishMutation.isPending ? "Publishing..." : "Publish now"}
               </Button>
               <Button
@@ -479,9 +475,8 @@ export function AppDetailContent({ accountId, gatewayId, app, statusQuery }: App
             )}
 
             <p className="text-xs text-muted-foreground">
-              Direct publish uses <code className="font-mono">waitUntil: NONE</code>. The
-              wallet may report failure while FastKV still indexes the transaction
-              successfully.
+              Direct publish uses <code className="font-mono">waitUntil: NONE</code>. The wallet may
+              report failure while FastKV still indexes the transaction successfully.
             </p>
           </div>
         )}
@@ -607,11 +602,46 @@ function syntaxHighlightLine(line: string): ReactNode {
   let key = 0;
 
   const patterns = [
-    { re: /("(?:[^"\\]|\\.)*")\s*:/, render: (_m: string, k: string) => <span key={key++} className="text-background/80">{k}</span> },
-    { re: /"(?:[^"\\]|\\.)*"/, render: (_m: string, s: string) => <span key={key++} className="text-brand-accent">{s}</span> },
-    { re: /\b(true|false)\b/, render: (_m: string, b: string) => <span key={key++} className="text-yellow-300">{b}</span> },
-    { re: /\bnull\b/, render: (_m: string, _g?: string) => <span key={key++} className="text-muted-foreground">null</span> },
-    { re: /(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/, render: (_m: string, n: string) => <span key={key++} className="text-blue-300">{n}</span> },
+    {
+      re: /("(?:[^"\\]|\\.)*")\s*:/,
+      render: (_m: string, k: string) => (
+        <span key={key++} className="text-background/80">
+          {k}
+        </span>
+      ),
+    },
+    {
+      re: /"(?:[^"\\]|\\.)*"/,
+      render: (_m: string, s: string) => (
+        <span key={key++} className="text-brand-accent">
+          {s}
+        </span>
+      ),
+    },
+    {
+      re: /\b(true|false)\b/,
+      render: (_m: string, b: string) => (
+        <span key={key++} className="text-yellow-300">
+          {b}
+        </span>
+      ),
+    },
+    {
+      re: /\bnull\b/,
+      render: (_m: string, _g?: string) => (
+        <span key={key++} className="text-muted-foreground">
+          null
+        </span>
+      ),
+    },
+    {
+      re: /(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/,
+      render: (_m: string, n: string) => (
+        <span key={key++} className="text-blue-300">
+          {n}
+        </span>
+      ),
+    },
   ];
 
   let matched = false;
@@ -635,7 +665,12 @@ function syntaxHighlightLine(line: string): ReactNode {
   }
 
   if (remaining.length > 0) {
-    return <>{tokens}{syntaxHighlightLine(remaining)}</>;
+    return (
+      <>
+        {tokens}
+        {syntaxHighlightLine(remaining)}
+      </>
+    );
   }
 
   return <>{tokens}</>;

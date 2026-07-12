@@ -77,6 +77,12 @@ export const contract = oc.router({
     .output(WikiSchema)
     .errors({ UNAUTHORIZED, BAD_REQUEST }),
 
+  deleteWiki: oc
+    .route({ method: "DELETE", path: "/wikis/{wikiId}" })
+    .input(z.object({ wikiId: z.string() }))
+    .output(z.object({ deleted: z.boolean() }))
+    .errors({ UNAUTHORIZED, FORBIDDEN, NOT_FOUND }),
+
   resolveWiki: oc
     .route({ method: "GET", path: "/wikis/account/{accountId}" })
     .input(z.object({ accountId: z.string() }))

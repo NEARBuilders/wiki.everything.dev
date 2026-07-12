@@ -7,6 +7,7 @@ import builtOn from "@/assets/built_on.png";
 import builtOnRev from "@/assets/built_on_rev.png";
 import { BrandElement } from "@/components/brand-element";
 import { Button } from "@/components/ui/button";
+import { NetworkToggle } from "@/components/ui/network-toggle";
 import { UnderConstruction } from "@/components/under-construction";
 
 type SearchParams = {
@@ -117,6 +118,7 @@ function LoginPage() {
 
   return (
     <div className="min-h-full w-full flex flex-col animate-fade-in">
+      <NetworkToggle />
       <div className="flex-1 flex items-center justify-center px-6">
         <div className="w-full max-w-sm flex flex-col items-center gap-5">
           <BrandElement appName={appName} size="lg" />

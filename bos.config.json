@@ -34,6 +34,25 @@
       ]
     }
   },
+  "auth": {
+    "extends": "bos://dev.everything.near/dev.everything.dev#app.auth",
+    "variables": {
+      "siwn": {
+        "subAccount": {
+          "mainnet": {
+            "parentAccount": "wiki.every.near",
+            "parentHasFullAccess": true,
+            "minDeposit": "0.1 NEAR"
+          },
+          "testnet": {
+            "parentAccount": "wiki.allthethings.testnet",
+            "parentHasFullAccess": true,
+            "minDeposit": "0.1 NEAR"
+          }
+        }
+      }
+    }
+  },
   "plugins": {
     "apps": {
       "production": "https://elliot-braem-5538-everything-dev-apps-plugin-ever-506815daf-ze.zephyrcloud.app",

@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Copy, ExternalLink, Globe } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApiClient } from "@/app";
 import { Badge, Button } from "@/components";
@@ -54,7 +54,12 @@ function AppsIndex() {
   const search = Route.useSearch();
   const observerRef = useRef<IntersectionObserver | null>(null);
 
+  const inputRef = useRef<HTMLInputElement>(null);
   const [addressInput, setAddressInput] = useState("");
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   const {
     data: pages,
@@ -176,10 +181,10 @@ function AppsIndex() {
                   </TooltipContent>
                 </Tooltip>
                 <input
+                  ref={inputRef}
                   type="text"
                   value={addressInput}
                   onChange={(e) => setAddressInput(e.target.value)}
-                  autoFocus
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();

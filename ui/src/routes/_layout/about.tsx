@@ -2,11 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, Check, Copy, Globe } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { getAccount, getActiveRuntime, useApiClient } from "@/app";
-import { AppDetailContent } from "@/components/ui/app-detail-content";
 import { Button } from "@/components";
 import { PageContainer } from "@/components/layout/page-container";
-import { toast } from "sonner";
+import { AppDetailContent } from "@/components/ui/app-detail-content";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/_layout/about")({
@@ -108,7 +108,9 @@ function About() {
             {header}
             <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-center sm:px-6">
               <Globe size={28} className="text-border" />
-              <p className="text-base font-semibold text-foreground">Runtime identity not available.</p>
+              <p className="text-base font-semibold text-foreground">
+                Runtime identity not available.
+              </p>
             </div>
           </div>
         </PageContainer>
@@ -170,9 +172,8 @@ function About() {
 
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Publish to the registry with{" "}
-                  <code className="font-mono">bos publish</code> to make this app discoverable and
-                  show its full detail view.
+                  Publish to the registry with <code className="font-mono">bos publish</code> to
+                  make this app discoverable and show its full detail view.
                 </p>
               </div>
             </div>

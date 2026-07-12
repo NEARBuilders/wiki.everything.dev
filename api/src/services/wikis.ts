@@ -22,6 +22,7 @@ export interface WikisService {
   }): Promise<WikiRecord>;
   resolveWikiByAccountId(accountId: string): Promise<WikiRecord | null>;
   resolveWikiById(id: string): Promise<WikiRecord | null>;
+  deleteWikiById(id: string): Promise<boolean>;
 }
 
 export class WikisTag extends Context.Tag("api/Wikis")<WikisService, WikisService>() {}
@@ -97,6 +98,22 @@ export const WikisLive = Layer.effect(
         try {
           const [row] = await db.select().from(wikisTable).where(eq(wikisTable.id, id)).limit(1);
           return row ? toWikiRecord(row) : null;
+        } catch (error) {
+          throw error instanceof ORPCError
+            ? error
+            : new ORPCError("INTERNAL_SERVER_ERROR", {
+                message: error instanceof Error ? error.message : String(error),
+              });
+        }
+      },
+
+      deleteWikiById: async (id) => {
+        try {
+          const rows = await db
+            .delete(wikisTable)
+            .where(eq(wikisTable.id, id))
+            .returning({ deletedId: wikisTable.id });
+          return rows.length > 0;
         } catch (error) {
           throw error instanceof ORPCError
             ? error

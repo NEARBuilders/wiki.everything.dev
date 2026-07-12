@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Sparkles } from "lucide-react";
+import type { TransactionBuilder } from "near-kit";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useApiClient, useAuthClient } from "@/app";
@@ -14,6 +15,30 @@ export const Route = createFileRoute("/_layout/_authenticated/wiki/new")({
   }),
   component: NewWikiPage,
 });
+
+const RESERVED_SUBDOMAINS = [
+  "root",
+  "www",
+  "admin",
+  "api",
+  "dashboard",
+  "wiki",
+  "mail",
+  "status",
+  "help",
+  "support",
+  "docs",
+  "blog",
+  "dev",
+  "test",
+  "app",
+  "beta",
+  "demo",
+  "staging",
+  "internal",
+  "moderation",
+  "abuse",
+];
 
 function NewWikiPage() {
   const apiClient = useApiClient();
@@ -59,6 +84,10 @@ function NewWikiPage() {
         throw new Error("No NEAR public key available");
       }
 
+      if (RESERVED_SUBDOMAINS.includes(subdomain)) {
+        throw new Error(`"${subdomain}" is a reserved subdomain`);
+      }
+
       const availability = await auth.near.checkSubAccountAvailability({
         subAccountName: subdomain,
       });
@@ -88,6 +117,34 @@ function NewWikiPage() {
       });
 
       await auth.organization.setActive({ organizationId: orgResult.data.id });
+
+      try {
+        const prepared = await apiClient.apps.prepareRegistryMetadataWrite({
+          accountId,
+          gatewayId: "wiki.everything.dev",
+          claimedBy: nearAccountId,
+          title: name,
+          homepageUrl: `https://${subdomain}.wiki.everything.dev`,
+        });
+
+        const signed = await auth.near.buildSignedDelegateAction(
+          prepared.data.contractId,
+          (builder: TransactionBuilder) =>
+            builder.functionCall(
+              prepared.data.contractId,
+              prepared.data.methodName,
+              prepared.data.args,
+              { gas: "10000000000000", attachedDeposit: 0n },
+            ),
+        );
+
+        await auth.near.relayTransaction({ payload: signed });
+      } catch (err) {
+        console.warn("[Wiki] Registry publish failed (non-blocking):", err);
+        toast.warning(
+          "Wiki created, but registry publish failed. You can retry from the apps page.",
+        );
+      }
 
       return { wiki: wikiResult, accountId, orgId: orgResult.data.id };
     },
@@ -181,11 +238,15 @@ function NewWikiPage() {
                 3. <strong>Wiki row</strong> — The wiki is registered in the database
               </p>
               <p>
-                4. <strong>Redirect</strong> — You're sent to your new wiki
+                4. <strong>Registry</strong> — The wiki is published to the apps registry for UI
+                override support
+              </p>
+              <p>
+                5. <strong>Redirect</strong> — You're sent to your new wiki
               </p>
               <p className="text-muted-foreground/60 pt-1">
-                Funded subaccount (≥0.1 NEAR). Full-access key retained — you can delete and reclaim
-                later.
+                Funded subaccount (≥0.1 NEAR). Parent retains full-access key for recovery. You can
+                delete and reclaim later.
               </p>
             </CardContent>
           </Card>

@@ -4,8 +4,8 @@ import { ArrowLeft, Check, Copy, ExternalLink, Info } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { useApiClient } from "@/app";
-import { AppDetailContent } from "@/components/ui/app-detail-content";
 import { Badge, Button } from "@/components";
+import { AppDetailContent } from "@/components/ui/app-detail-content";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 

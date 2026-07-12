@@ -341,7 +341,11 @@ function ComponentsPage() {
               >
                 Success
               </Button>
-              <Button variant="outline" size="sm" onClick={() => toast.info("New version available")}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => toast.info("New version available")}
+              >
                 Info
               </Button>
               <Button

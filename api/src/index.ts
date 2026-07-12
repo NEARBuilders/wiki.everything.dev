@@ -46,7 +46,7 @@ export default createPlugin.withPlugins<PluginsClient>()({
   shutdown: () => Effect.log("[API] Shutdown"),
 
   createRouter: (services, builder) => {
-    const { requireAuth, requireOrganization } = createAuthMiddleware(builder);
+    const { requireAuth, requireOrganization, requireOrgRole } = createAuthMiddleware(builder);
 
     async function verifyWikiAccess(wikiId: string, orgId: string | undefined) {
       const wiki = await services.wikis.resolveWikiById(wikiId);
@@ -112,6 +112,26 @@ export default createPlugin.withPlugins<PluginsClient>()({
         return wiki;
       }),
 
+      deleteWiki: builder.deleteWiki
+        .use(requireAuth)
+        .use(requireOrgRole("owner"))
+        .handler(async ({ input, context }) => {
+          const wiki = await services.wikis.resolveWikiById(input.wikiId);
+          if (!wiki) {
+            throw new ORPCError("NOT_FOUND", {
+              message: "Wiki not found",
+              data: { resource: "wiki", resourceId: input.wikiId },
+            });
+          }
+          if (wiki.orgId !== context.organization.activeOrganizationId) {
+            throw new ORPCError("FORBIDDEN", {
+              message: "You are not the owner of this wiki's organization",
+            });
+          }
+          const deleted = await services.wikis.deleteWikiById(input.wikiId);
+          return { deleted };
+        }),
+
       getArticle: builder.getArticle.handler(async ({ input, errors }) => {
         const result = await services.articles.getArticle(input.wikiId, input.slug);
         if (!result) {
@@ -125,7 +145,7 @@ export default createPlugin.withPlugins<PluginsClient>()({
 
       createArticle: builder.createArticle
         .use(requireAuth)
-        .use(requireOrganization)
+        .use(requireOrgRole("owner", "admin", "member"))
         .handler(async ({ input, context }) => {
           await verifyWikiAccess(input.wikiId, context.organization?.activeOrganizationId);
           return await services.articles.createArticle({
@@ -140,7 +160,7 @@ export default createPlugin.withPlugins<PluginsClient>()({
 
       updateArticle: builder.updateArticle
         .use(requireAuth)
-        .use(requireOrganization)
+        .use(requireOrgRole("owner", "admin", "member"))
         .handler(async ({ input, context }) => {
           await verifyWikiAccess(input.wikiId, context.organization?.activeOrganizationId);
           return await services.articles.updateArticle({
