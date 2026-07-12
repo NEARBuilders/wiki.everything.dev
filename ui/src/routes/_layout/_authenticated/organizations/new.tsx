@@ -74,9 +74,6 @@ function NewOrganization() {
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                 New Organization
               </h1>
-              <p className="text-sm text-muted-foreground">
-                Create a workspace for team members and organization API keys.
-              </p>
             </div>
             <Button asChild variant="outline">
               <Link to="/organizations">back to organizations</Link>

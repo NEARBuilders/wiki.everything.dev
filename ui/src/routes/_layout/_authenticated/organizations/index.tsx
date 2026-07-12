@@ -143,7 +143,6 @@ function OrganizationsList() {
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                 Organizations
               </h1>
-              <p className="text-sm text-muted-foreground">Manage your organizations and teams.</p>
             </div>
             <Link
               to="/organizations/new"

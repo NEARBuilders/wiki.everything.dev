@@ -62,9 +62,6 @@ function Home() {
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                 {user?.name || user?.email || "You"}
               </h1>
-              <p className="text-sm text-muted-foreground">
-                Manage your identity and jump back into the wiki.
-              </p>
             </div>
             <Link
               to="/settings"
@@ -159,7 +156,7 @@ function QuickCard({
     <Link
       to={to}
       preload="intent"
-      className="group border-2 border-outset border-border-strong bg-card p-4 rounded-[12px] shadow-sm hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out flex flex-col gap-2"
+      className="group border-2 border-outset border-border-strong bg-card p-4 rounded-[12px] shadow-sm hover:bg-muted hover:shadow-md active:border-inset active:shadow-none transition-all duration-200 ease-out flex flex-col gap-2"
     >
       <div className="flex items-center justify-center w-9 h-9 border-2 border-inset border-border-strong bg-muted rounded-[8px]">
         <Icon className="h-4 w-4 text-foreground" />

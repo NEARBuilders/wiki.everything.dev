@@ -108,9 +108,12 @@ function Layout() {
           </div>
         )}
 
-        {hideChrome ? (
-          <MinimalHeader />
-        ) : (
+        <div
+          className={cn(
+            "transition-all duration-200 overflow-hidden",
+            hideChrome ? "h-0 opacity-0" : "h-14 opacity-100",
+          )}
+        >
           <WikiHeader
             appName={appName}
             wiki={wiki}
@@ -118,36 +121,45 @@ function Layout() {
             isMember={liveIsMember}
             canEdit={liveCanEdit}
           />
-        )}
+        </div>
+        {hideChrome && <MinimalHeader />}
 
         <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
-          {!hideChrome && (
-            <aside className="hidden lg:flex shrink-0 w-64 flex-col border-r border-border bg-card overflow-y-auto">
-              <div className="flex-1">
-                <WikiSidebar
-                  wiki={wiki}
-                  isAuthenticated={isAuthenticated}
-                  isMember={liveIsMember}
-                  canEdit={liveCanEdit}
-                />
+          <aside
+            className={cn(
+              "hidden lg:flex shrink-0 flex-col border-r border-border bg-card overflow-y-auto transition-all duration-300",
+              hideChrome ? "w-0 opacity-0 border-r-0 overflow-hidden" : "w-64",
+            )}
+          >
+            <div className="flex-1 min-w-64">
+              <WikiSidebar
+                wiki={wiki}
+                isAuthenticated={isAuthenticated}
+                isMember={liveIsMember}
+                canEdit={liveCanEdit}
+              />
+            </div>
+            <div className="shrink-0 px-4 pt-2 pb-0.5 flex justify-center">
+              <NearBranding />
+            </div>
+            <div className="shrink-0 px-4 pb-3 pt-2 border-t border-border">
+              <div className="flex items-center justify-between">
+                <Link
+                  to="/about"
+                  className="text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  about
+                </Link>
+                <ThemeToggle className="relative flex items-center justify-center w-6 h-6 text-muted-foreground hover:text-foreground transition-colors" />
               </div>
-              <div className="shrink-0 px-4 pb-3 pt-2 border-t border-border space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono text-muted-foreground">
-                    wiki.everything.dev
-                  </span>
-                  <ThemeToggle className="relative flex items-center justify-center w-6 h-6 text-muted-foreground hover:text-foreground transition-colors" />
-                </div>
-                <NearBranding />
-              </div>
-            </aside>
-          )}
+            </div>
+          </aside>
 
           <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
             <main
               className={cn(
-                "flex-1 w-full min-h-0 overflow-y-auto",
-                !hideChrome && "pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:pb-6",
+                "flex-1 w-full min-h-0 overflow-y-auto transition-all duration-300",
+                !hideChrome ? "pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:pb-6" : "pb-0",
               )}
             >
               <Outlet />
@@ -155,14 +167,19 @@ function Layout() {
           </div>
         </div>
 
-        {!hideChrome && (
+        <div
+          className={cn(
+            "transition-opacity duration-300",
+            hideChrome ? "opacity-0 pointer-events-none" : "opacity-100",
+          )}
+        >
           <MobileTabBar
             wiki={wiki}
             isAuthenticated={isAuthenticated}
             isMember={liveIsMember}
             canEdit={liveCanEdit}
           />
-        )}
+        </div>
       </div>
     </TooltipProvider>
   );
@@ -245,14 +262,19 @@ function MobileTabBar({
                 onNavigate={() => setDrawerOpen(false)}
               />
             </div>
-            <div className="shrink-0 px-4 pb-3 pt-2 border-t border-border space-y-2">
+            <div className="shrink-0 px-4 pt-2 pb-0.5 flex justify-center">
+              <NearBranding />
+            </div>
+            <div className="shrink-0 px-4 pb-3 pt-2 border-t border-border">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono text-muted-foreground">
-                  wiki.everything.dev
-                </span>
+                <Link
+                  to="/about"
+                  className="text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  about
+                </Link>
                 <ThemeToggle className="relative flex items-center justify-center w-6 h-6 text-muted-foreground hover:text-foreground transition-colors" />
               </div>
-              <NearBranding />
             </div>
           </SheetContent>
         </Sheet>

@@ -26,25 +26,6 @@ export const Route = createFileRoute("/_layout/apps/")({
     preview:
       typeof search.preview === "string" && search.preview.length > 0 ? search.preview : undefined,
   }),
-  loader: async ({ context }) => {
-    const { queryClient, apiClient } = context;
-    await Promise.allSettled([
-      queryClient.prefetchInfiniteQuery({
-        queryKey: ["apps"],
-        queryFn: ({ pageParam }) =>
-          apiClient.apps.listRegistryApps({
-            limit: PAGE_SIZE,
-            cursor: pageParam as string | undefined,
-          }),
-        initialPageParam: undefined,
-      }),
-      queryClient.prefetchQuery({
-        queryKey: ["registry-status"],
-        queryFn: () => apiClient.apps.getRegistryStatus(),
-        staleTime: 60_000,
-      }),
-    ]);
-  },
   head: () => ({
     meta: [
       { title: "Apps | everything.dev" },
@@ -124,8 +105,7 @@ function AppsIndex() {
     [fetchNextPage, hasNextPage, isFetchingNextPage],
   );
 
-  const handleAddressNavigate = (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const handleAddressNavigate = () => {
     const parsed = parseBosAddress(addressInput);
     if (!parsed) return;
     if (parsed.gatewayId) {
@@ -180,10 +160,7 @@ function AppsIndex() {
               </button>
             )}
 
-            <form
-              onSubmit={handleAddressNavigate}
-              className="flex min-w-0 flex-1 items-center gap-2"
-            >
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-[12px] border-2 border-outset border-border-strong bg-card shadow-sm transition-shadow duration-200 ease-out focus-within:shadow-md">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -202,6 +179,13 @@ function AppsIndex() {
                   type="text"
                   value={addressInput}
                   onChange={(e) => setAddressInput(e.target.value)}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddressNavigate();
+                    }
+                  }}
                   placeholder="dev.everything.near/everything.dev"
                   className="min-w-0 flex-1 bg-transparent px-3 py-2 text-xs font-mono text-foreground outline-none placeholder:text-muted-foreground"
                   aria-label="bos:// address"
@@ -209,14 +193,15 @@ function AppsIndex() {
               </div>
 
               <button
-                type="submit"
+                type="button"
                 disabled={!addressInput.trim()}
                 aria-label="Navigate"
+                onClick={() => handleAddressNavigate()}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border-2 border-outset border-border-strong bg-card text-foreground shadow-sm transition-all duration-200 ease-out hover:bg-muted hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ArrowRight size={14} />
               </button>
-            </form>
+            </div>
           </div>
         </div>
 

@@ -154,7 +154,7 @@ function RootComponent() {
           <div id="root">
             <Outlet />
           </div>
-          <Toaster position={isDesktop ? "bottom-right" : "top-center"} richColors closeButton />
+          <Toaster position={isDesktop ? "bottom-right" : "top-center"} closeButton />
         </ThemeProvider>
         <Scripts />
         {process.env.NODE_ENV === "development" && (

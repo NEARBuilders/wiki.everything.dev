@@ -2,7 +2,7 @@
   "extends": "bos://dev.everything.near/dev.everything.dev",
   "account": "wiki.everything.near",
   "domain": "wiki.everything.dev",
-  "title": "every wiki",
+  "title": "wiki.everything.dev",
   "description": "Wiki platform on everything.dev — multi-tenant collaborative wikis with NEAR subaccount tenancy.",
   "staging": {
     "domain": "dev.everything.dev"

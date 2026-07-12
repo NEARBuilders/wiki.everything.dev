@@ -89,10 +89,6 @@ function ExplorePage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             All pages
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Every article in {wiki.name}, indexed alphabetically. Filter with the search box or jump
-            to a letter.
-          </p>
         </header>
 
         <div className="relative max-w-md">

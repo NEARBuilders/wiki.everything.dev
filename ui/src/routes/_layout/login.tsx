@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Navigate, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { getAppName, sessionQueryOptions, useAuthClient } from "@/app";
 import builtOn from "@/assets/built_on.png";
 import builtOnRev from "@/assets/built_on_rev.png";
 import { BrandElement } from "@/components/brand-element";
+import { Button } from "@/components/ui/button";
 import { UnderConstruction } from "@/components/under-construction";
 
 type SearchParams = {
@@ -13,7 +14,6 @@ type SearchParams = {
 };
 
 export const Route = createFileRoute("/_layout/login")({
-  ssr: false,
   validateSearch: (search: Record<string, unknown>): SearchParams => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
   }),
@@ -39,7 +39,7 @@ export const Route = createFileRoute("/_layout/login")({
 function LoginPage() {
   const navigate = useNavigate();
   const auth = useAuthClient();
-  const { data: session } = useQuery(sessionQueryOptions(auth, undefined));
+  const { data: session, isLoading } = useQuery(sessionQueryOptions(auth, undefined));
   const { redirect } = Route.useSearch();
   const { runtimeConfig } = Route.useRouteContext();
   const queryClient = useQueryClient();
@@ -55,7 +55,6 @@ function LoginPage() {
     if (freshSession) {
       queryClient.setQueryData(["session"], freshSession);
     }
-    await queryClient.invalidateQueries({ queryKey: ["session"] });
     navigate({ to: redirectTo, replace: true, search: {} });
   };
 
@@ -103,28 +102,36 @@ function LoginPage() {
   };
 
   if (session?.user) {
-    const redirectTo = redirect?.startsWith("/") ? redirect : "/home";
-    return <Navigate to={redirectTo} replace search={{}} />;
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-full w-full flex items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+      </div>
+    );
   }
 
   const isPending = nearPending || anonPending;
 
   return (
-    <div className="min-h-full w-full flex flex-col">
+    <div className="min-h-full w-full flex flex-col animate-fade-in">
       <div className="flex-1 flex items-center justify-center px-6">
         <div className="w-full max-w-sm flex flex-col items-center gap-5">
           <BrandElement appName={appName} size="lg" />
 
           <div className="w-full rounded-[12px] border border-border bg-card p-6 sm:p-8 space-y-5">
             <div className="space-y-3">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={handleNear}
                 disabled={isPending}
-                className="w-full h-11 px-4 inline-flex items-center justify-center gap-2 text-sm font-medium border-2 border-outset border-border-strong bg-card text-foreground shadow-sm hover:shadow-md hover:bg-muted active:border-inset active:shadow-none transition-all duration-200 ease-out disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+                className="w-full"
               >
                 {nearPending ? "connecting..." : "connect to everything"}
-              </button>
+              </Button>
 
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-border" />
@@ -132,14 +139,15 @@ function LoginPage() {
                 <div className="flex-1 h-px bg-border" />
               </div>
 
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={handleAnonymous}
                 disabled={isPending}
-                className="w-full h-11 px-4 inline-flex items-center justify-center gap-2 text-sm font-medium border-2 border-transparent bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground hover:shadow-sm active:shadow-none transition-all duration-200 ease-out disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+                className="w-full text-muted-foreground hover:text-foreground"
               >
                 {anonPending ? "starting..." : "continue anonymously"}
-              </button>
+              </Button>
             </div>
 
             <div className="pt-3 border-t border-border">

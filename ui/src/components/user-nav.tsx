@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { toast } from "sonner";
 import type { Organization } from "@/app";
 import { sessionQueryOptions, useAuthClient } from "@/app";
 import { OrgSwitcher } from "@/components";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +19,6 @@ export function UserNav() {
   const auth = useAuthClient();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const router = useRouter();
   const { data: session } = useQuery(sessionQueryOptions(auth));
   const user = session?.user;
   const { data: organizations } = useQuery({
@@ -44,10 +45,9 @@ export function UserNav() {
       await auth.near.disconnect().catch(() => {});
     },
     onSuccess: async () => {
+      toast.success("Signed out");
       queryClient.setQueryData(["session"], null);
       queryClient.removeQueries({ queryKey: ["organizations"] });
-      await queryClient.invalidateQueries({ queryKey: ["session"] });
-      await router.invalidate();
       await navigate({ to: "/", replace: true });
     },
     onError: (error: Error) => {
@@ -57,12 +57,9 @@ export function UserNav() {
 
   if (!user) {
     return (
-      <Link
-        to="/login"
-        className="h-9 px-4 inline-flex items-center justify-center text-sm font-medium border-2 border-outset border-border-strong bg-card text-foreground shadow-sm hover:shadow-md hover:bg-muted active:border-inset active:shadow-none transition-all duration-200 ease-out cursor-pointer"
-      >
-        connect
-      </Link>
+      <Button asChild variant="outline">
+        <Link to="/login">connect</Link>
+      </Button>
     );
   }
 

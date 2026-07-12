@@ -44,9 +44,6 @@ function SettingsLayout() {
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                 Settings
               </h1>
-              <p className="text-sm text-muted-foreground">
-                Manage your account identity and security.
-              </p>
             </div>
           </div>
         </header>

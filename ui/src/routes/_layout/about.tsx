@@ -1,214 +1,272 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { BookOpen, ExternalLink, FileText, GitFork, Sparkles } from "lucide-react";
-import { getAccount, getActiveRuntime, getAppName, getRepository } from "@/app";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { ArrowLeft, Check, Copy, Globe } from "lucide-react";
+import { useState } from "react";
+import { getAccount, getActiveRuntime, useApiClient } from "@/app";
+import { AppDetailContent } from "@/components/ui/app-detail-content";
+import { Button } from "@/components";
 import { PageContainer } from "@/components/layout/page-container";
-import { Markdown } from "@/components/ui/markdown";
-
-function sanitizeMarkdownContent(content: string): string {
-  return content
-    .replace(/<!-- markdownlint-disable[^>]*-->/g, "")
-    .replace(/<div align="center">[\s\S]*?<\/div>/g, "")
-    .trim();
-}
-
-function getRawReadmeUrls(repositoryUrl: string): string[] {
-  try {
-    const url = new URL(repositoryUrl);
-    const parts = url.pathname.split("/").filter(Boolean);
-    if (parts.length < 2) {
-      return [];
-    }
-    const [owner, repo] = parts;
-    return [
-      `https://raw.githubusercontent.com/${owner}/${repo}/main/README.md`,
-      `https://raw.githubusercontent.com/${owner}/${repo}/master/README.md`,
-    ];
-  } catch {
-    return [];
-  }
-}
-
-async function fetchRepositoryReadme(repositoryUrl: string): Promise<string | null> {
-  const candidates = getRawReadmeUrls(repositoryUrl);
-  if (candidates.length === 0) return null;
-  for (const url of candidates) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) continue;
-      return sanitizeMarkdownContent(await response.text());
-    } catch {}
-  }
-  return null;
-}
+import { toast } from "sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/_layout/about")({
   loader: async ({ context }) => {
-    const repository = getRepository(context.runtimeConfig);
-    const description =
-      ((context.runtimeConfig as Record<string, unknown>)?.description as string | null) ?? null;
-    let readme: string | null = null;
-    if (repository) {
-      readme = await fetchRepositoryReadme(repository).catch(() => null);
+    const { queryClient, apiClient } = context;
+    const runtimeConfig = context.runtimeConfig;
+    const accountId = getAccount(runtimeConfig);
+    const gatewayId = getActiveRuntime(runtimeConfig)?.gatewayId;
+    if (accountId && gatewayId) {
+      await queryClient.prefetchQuery({
+        queryKey: ["app", accountId, gatewayId],
+        queryFn: () => apiClient.apps.getRegistryApp({ accountId, gatewayId }),
+        staleTime: 30_000,
+      });
     }
-    return { repository, readme, description, runtimeConfig: context.runtimeConfig };
+    return { accountId, gatewayId };
   },
   head: () => ({
     meta: [
-      { title: "About | app" },
+      { title: "About | everything.dev" },
       { name: "description", content: "About this runtime-composed app on NEAR." },
     ],
   }),
   component: About,
 });
 
-function isGithubUrl(url: string) {
-  return /github\.com/i.test(url);
-}
+function About() {
+  const { accountId, gatewayId } = Route.useLoaderData();
+  const { runtimeConfig } = Route.useRouteContext();
+  const runtime = getActiveRuntime(runtimeConfig);
+  const apiClient = useApiClient();
+  const router = useRouter();
+  const canGoBack = router.history.canGoBack?.() ?? false;
 
-function GithubIcon({ size = 16 }: { size?: number }) {
+  const [copiedCmd, setCopiedCmd] = useState(false);
+
+  const appQuery = useQuery({
+    queryKey: ["app", accountId, gatewayId],
+    queryFn: () => apiClient.apps.getRegistryApp({ accountId: accountId!, gatewayId: gatewayId! }),
+    staleTime: 30_000,
+    enabled: Boolean(accountId && gatewayId),
+  });
+
+  const statusQuery = useQuery({
+    queryKey: ["registry-status"],
+    queryFn: () => apiClient.apps.getRegistryStatus(),
+    staleTime: 60_000,
+  });
+
+  const bosUri = accountId && gatewayId ? `bos://${accountId}/${gatewayId}` : null;
+  const displayTitle = runtime?.title ?? accountId ?? "About";
+  const startCommand =
+    accountId && gatewayId
+      ? `bunx everything-dev@latest start --account ${accountId} --domain ${gatewayId}`
+      : null;
+
+  const header = (
+    <div className="flex items-center gap-2 flex-wrap justify-between">
+      <div className="flex items-center gap-2">
+        {canGoBack && (
+          <button
+            type="button"
+            onClick={() => router.history.back()}
+            aria-label="Go back"
+            className="flex items-center justify-center w-8 h-8 border-2 border-outset border-border-strong bg-card shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:bg-muted rounded-[10px]"
+          >
+            <ArrowLeft size={14} className="text-foreground" />
+          </button>
+        )}
+        <span className="text-xs text-muted-foreground font-mono">about</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {startCommand && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={async () => {
+              await navigator.clipboard.writeText(startCommand);
+              setCopiedCmd(true);
+              toast.success("Copied start command");
+              setTimeout(() => setCopiedCmd(false), 2000);
+            }}
+          >
+            {copiedCmd ? <Check size={11} /> : <Copy size={11} />}
+            <span className="hidden sm:inline">start command</span>
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
+  if (!accountId || !gatewayId) {
+    return (
+      <TooltipProvider>
+        <PageContainer variant="default">
+          <div className="space-y-4">
+            {header}
+            <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-center sm:px-6">
+              <Globe size={28} className="text-border" />
+              <p className="text-base font-semibold text-foreground">Runtime identity not available.</p>
+            </div>
+          </div>
+        </PageContainer>
+      </TooltipProvider>
+    );
+  }
+
+  if (appQuery.isLoading) {
+    return (
+      <TooltipProvider>
+        <PageContainer variant="default">
+          <div className="space-y-4">
+            {header}
+            <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-center sm:px-6">
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            </div>
+          </div>
+        </PageContainer>
+      </TooltipProvider>
+    );
+  }
+
+  const app = appQuery.data?.data;
+
+  if (appQuery.error || !app) {
+    return (
+      <TooltipProvider>
+        <PageContainer variant="default">
+          <div className="space-y-4">
+            {header}
+            <div className="rounded-[12px] border border-border bg-card p-6 space-y-4">
+              <div className="space-y-2">
+                <h1 className="text-xl font-bold text-foreground break-all">{displayTitle}</h1>
+                {bosUri && (
+                  <code className="block font-mono text-xs text-muted-foreground">{bosUri}</code>
+                )}
+                {runtime?.description && (
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {runtime.description}
+                  </p>
+                )}
+              </div>
+
+              <section className="space-y-2">
+                <SectionLabel>Runtime</SectionLabel>
+                <div className="space-y-1.5">
+                  <RuntimeRow label="host" value={runtime?.hostUrl} />
+                  <RuntimeRow label="account" value={accountId} isUrl={false} mono />
+                  <RuntimeRow label="gateway" value={gatewayId} isUrl={false} mono />
+                </div>
+              </section>
+
+              {startCommand && (
+                <section className="space-y-2">
+                  <SectionLabel>Start command</SectionLabel>
+                  <StartCommand command={startCommand} />
+                </section>
+              )}
+
+              <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Publish to the registry with{" "}
+                  <code className="font-mono">bos publish</code> to make this app discoverable and
+                  show its full detail view.
+                </p>
+              </div>
+            </div>
+          </div>
+        </PageContainer>
+      </TooltipProvider>
+    );
+  }
+
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 0C5.37 0 0 5.373 0 12c0 5.303 3.438 9.8 8.205 11.387.6.113.82-.258.82-.577v-2.165c-3.338.726-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.729.083-.729 1.205.085 1.84 1.237 1.84 1.237 1.07 1.834 2.807 1.304 3.492.997.108-.775.418-1.305.76-1.605-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.52 11.52 0 0 1 12 6.803c1.02.005 2.047.138 3.006.404 2.29-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.91 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.218.694.825.576C20.565 21.796 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-    </svg>
+    <TooltipProvider>
+      <div className="space-y-4 px-4 py-4 sm:px-6 sm:py-6">
+        {header}
+
+        <AppDetailContent
+          accountId={accountId}
+          gatewayId={gatewayId}
+          app={app}
+          statusQuery={statusQuery}
+        />
+      </div>
+    </TooltipProvider>
   );
 }
 
-function parseGithubRepo(url: string): { owner: string; repo: string } | null {
-  const match = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/.*)?$/i);
-  if (!match) return null;
-  return { owner: match[1], repo: match[2] };
-}
+function StartCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
 
-function About() {
-  const { repository, readme, description, runtimeConfig } = Route.useLoaderData();
-  const runtime = getActiveRuntime(runtimeConfig);
-  const account = getAccount(runtimeConfig);
-  const appName = getAppName(runtimeConfig);
-
-  const accountId = runtime?.accountId ?? account;
-  const githubRepo = repository && isGithubUrl(repository) ? parseGithubRepo(repository) : null;
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(command);
+    setCopied(true);
+    toast.success("Copied");
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <PageContainer variant="default">
-      <div className="space-y-4">
-        <div className="rounded-[12px] border border-border bg-card p-6 space-y-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-[10px] bg-foreground flex items-center justify-center shrink-0">
-                <BookOpen size={18} className="text-background" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-muted-foreground font-mono">{accountId}</span>
-                  <span className="text-muted-foreground">/</span>
-                  <span className="text-base font-semibold text-foreground">{appName}</span>
-                </div>
-                {githubRepo && (
-                  <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground font-mono">
-                    <GitFork size={11} />
-                    <span>
-                      {githubRepo.owner}/{githubRepo.repo}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="w-full group flex items-center justify-between gap-3 rounded-[8px] border border-border bg-foreground px-4 py-3 cursor-pointer transition-opacity duration-150 hover:opacity-90 text-left"
+    >
+      <code className="font-mono text-sm font-semibold text-background break-all leading-snug">
+        {command}
+      </code>
+      <span
+        className={`shrink-0 transition-colors duration-150 ${copied ? "text-brand-accent" : "text-background/50 group-hover:text-background/80"}`}
+      >
+        <Copy size={14} />
+      </span>
+    </button>
+  );
+}
 
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Link
-                to="/skill"
-                preload="intent"
-                className="h-9 rounded-[12px] px-4 text-sm font-bold inline-flex items-center gap-2 no-underline transition-colors duration-150 bg-foreground text-background hover:opacity-90"
-              >
-                <Sparkles size={14} />
-                Skill
-              </Link>
-              <a
-                href="/skill.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="h-9 rounded-[12px] px-4 text-sm font-bold inline-flex items-center gap-2 no-underline transition-colors duration-150 bg-secondary text-foreground hover:bg-border"
-              >
-                <FileText size={14} />
-                skill.md
-              </a>
-              {repository && (
-                <a
-                  href={repository}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="h-9 rounded-[12px] px-4 text-sm font-bold inline-flex items-center gap-2 no-underline transition-colors duration-150 bg-secondary text-foreground hover:bg-border"
-                >
-                  {isGithubUrl(repository) ? <GithubIcon size={14} /> : <ExternalLink size={14} />}
-                  {isGithubUrl(repository) ? "GitHub" : "Repository"}
-                </a>
-              )}
-            </div>
-          </div>
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border pb-1">
+      {children}
+    </div>
+  );
+}
 
-          {description && (
-            <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
-          )}
-
-          {repository && (
-            <div className="rounded-[8px] border border-border bg-muted px-3.5 py-2.5 flex items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground shrink-0 min-w-[64px]">
-                repo
-              </span>
-              <a
-                href={repository}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-mono text-foreground hover:underline truncate"
-              >
-                {repository}
-              </a>
-            </div>
-          )}
-
-          <div className="rounded-[8px] border border-border bg-muted px-3.5 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                for agents and builders
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Open the skill page for the essential TanStack Intent, local dev, and publish
-                instructions.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                to="/skill"
-                preload="intent"
-                className="h-9 rounded-[12px] px-4 text-sm font-bold inline-flex items-center gap-2 no-underline transition-colors duration-150 bg-card text-foreground border border-border hover:bg-background"
-              >
-                <Sparkles size={14} />
-                Open skill
-              </Link>
-              <a
-                href="/skill.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="h-9 rounded-[12px] px-4 text-sm font-bold inline-flex items-center gap-2 no-underline transition-colors duration-150 bg-card text-foreground border border-border hover:bg-background"
-              >
-                <FileText size={14} />
-                Raw markdown
-              </a>
-            </div>
-          </div>
-        </div>
-
-        {readme ? (
-          <div className="rounded-[12px] border border-border bg-card p-8">
-            <Markdown content={readme} />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-3 px-8 py-16 rounded-[12px] border border-border bg-card text-muted-foreground">
-            <FileText size={32} className="text-border" />
-            <p className="text-sm text-muted-foreground">No README available.</p>
-          </div>
-        )}
-      </div>
-    </PageContainer>
+function RuntimeRow({
+  label,
+  value,
+  isUrl = true,
+  mono,
+}: {
+  label: string;
+  value: string | null | undefined;
+  isUrl?: boolean;
+  mono?: boolean;
+}) {
+  if (!value) return null;
+  const looksLikeUrl = isUrl && /^https?:\/\//.test(value);
+  return (
+    <div className="flex items-start gap-2 rounded border border-border bg-muted/10 px-2.5 py-1.5 text-xs">
+      <span
+        className="text-muted-foreground uppercase tracking-wide shrink-0 pt-px font-semibold min-w-[40px]"
+        style={{ fontSize: 10 }}
+      >
+        {label}
+      </span>
+      {looksLikeUrl ? (
+        <a
+          href={value}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono text-foreground hover:underline break-all"
+        >
+          {value}
+        </a>
+      ) : (
+        <span className={`text-foreground break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+      )}
+    </div>
   );
 }

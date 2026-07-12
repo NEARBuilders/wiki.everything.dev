@@ -393,9 +393,6 @@ function OrganizationDetail() {
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                 {org.name}
               </h1>
-              <p className="text-sm text-muted-foreground">
-                Manage membership, invitations, and organization-scoped API access.
-              </p>
             </div>
           </div>
         </header>

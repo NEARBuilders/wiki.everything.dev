@@ -92,9 +92,6 @@ function RecentChangesPage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             Recent changes
           </h1>
-          <p className="text-sm text-muted-foreground">
-            The latest article edits in {wiki.name}, newest first.
-          </p>
         </header>
 
         {q.isLoading ? (

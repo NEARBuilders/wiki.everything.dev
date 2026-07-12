@@ -111,10 +111,6 @@ function NewWikiPage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             New Wiki
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Create a new wiki tenant. Your linked NEAR wallet will be used as the owner and
-            administrator.
-          </p>
         </header>
 
         <form
