@@ -1,0 +1,42 @@
+{
+  "extends": "bos://dev.everything.near/dev.everything.dev",
+  "account": "wiki.everything.near",
+  "domain": "wiki.everything.dev",
+  "title": "everything.dev",
+  "description": "Open runtime for apps on NEAR, composed from published config and loaded through a shared host, UI, and API runtime.",
+  "staging": {
+    "domain": "dev.everything.dev"
+  },
+  "repository": "https://github.com/nearbuilders/everything-dev",
+  "ci": {
+    "railway": {
+      "service": "app"
+    }
+  },
+  "app": {
+    "host": {
+      "development": "local:host",
+      "secrets": [
+        "CORS_ORIGIN",
+        "TENANT_WHITELIST",
+        "ALLOW_OVERRIDE",
+        "ALLOW_UNTRUSTED_SSR",
+        "CSP_STRICT"
+      ]
+    },
+    "ui": {
+      "development": "local:ui"
+    },
+    "api": {
+      "development": "local:api",
+      "secrets": [
+        "API_DATABASE_URL"
+      ]
+    }
+  },
+  "plugins": {
+    "template": {
+      "development": "local:plugins/_template"
+    }
+  }
+}
