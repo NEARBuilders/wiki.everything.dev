@@ -75,7 +75,7 @@ export const contract = oc.router({
       }),
     )
     .output(WikiSchema)
-    .errors({ UNAUTHORIZED, BAD_REQUEST }),
+    .errors({ UNAUTHORIZED, BAD_REQUEST, FORBIDDEN }),
 
   deleteWiki: oc
     .route({ method: "DELETE", path: "/wikis/{wikiId}" })

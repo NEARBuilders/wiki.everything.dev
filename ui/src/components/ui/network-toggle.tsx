@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuthClient } from "@/app";
-import { sessionQueryOptions } from "@/lib/auth";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { sessionQueryOptions } from "@/lib/auth";
 
 export function NetworkToggle() {
   const auth = useAuthClient();

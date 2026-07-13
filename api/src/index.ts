@@ -81,16 +81,26 @@ export default createPlugin.withPlugins<PluginsClient>()({
         .use(requireAuth)
         .use(requireOrganization)
         .handler(async ({ input, context }) => {
-          const orgId = context.organization?.activeOrganizationId;
-          if (!orgId) {
-            throw new ORPCError("FORBIDDEN", {
-              message: "Active organization required to create a wiki",
+          const orgId = context.organization.activeOrganizationId;
+          const subdomainSegment = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
+          if (!subdomainSegment.test(input.subdomain)) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "Invalid subdomain format",
+              data: { hint: "Lowercase alphanumeric with hyphens or underscores only" },
             });
           }
-          if (orgId !== input.orgId) {
-            throw new ORPCError("FORBIDDEN", {
-              message: "Cannot create a wiki linked to a different organization",
-              data: { activeOrgId: orgId, requestedOrgId: input.orgId },
+          const accountIdRegex =
+            /^(?=.{2,64}$)([a-z0-9]+(?:[-_][a-z0-9]+)*)(\.([a-z0-9]+(?:[-_][a-z0-9]+)*))*$/;
+          if (!accountIdRegex.test(input.accountId)) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "Invalid accountId format",
+              data: { hint: "Must be a valid NEAR account ID" },
+            });
+          }
+          if (!input.accountId.startsWith(`${input.subdomain}.`)) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "accountId must start with subdomain",
+              data: { subdomain: input.subdomain, accountId: input.accountId },
             });
           }
           return await services.wikis.createWiki({
