@@ -187,39 +187,34 @@ function createClientConfig() {
     },
     tools: {
       rspack: (config) => {
-        config.target = "web";
-        config.output = {
-          ...config.output,
-          uniqueName: normalizedName,
-          chunkFilename: "static/js/async/[name].[contenthash].js",
-        };
-        config.resolve = {
-          ...config.resolve,
-          fallback: { bufferutil: false, "utf-8-validate": false },
-        };
-        config.infrastructureLogging = { level: "error" };
-        config.stats = "errors-warnings";
-
-        for (const plugin of config.plugins ?? []) {
-          if (
-            (plugin as { constructor?: { name?: string } })?.constructor?.name ===
-            "CssExtractRspackPlugin"
-          ) {
-            (plugin as unknown as { options: { chunkFilename?: string } }).options.chunkFilename =
-              "static/css/async/[name].[contenthash].css";
-          }
+        const { CssExtractRspackPlugin } = require("@rspack/core");
+        const cssPlugin = config.plugins?.find((p) => p instanceof CssExtractRspackPlugin) as
+          | { options?: Record<string, string> }
+          | undefined;
+        if (cssPlugin) {
+          cssPlugin.options ??= {};
+          cssPlugin.options.chunkFilename = "static/css/async/[name].[contenthash].css";
         }
 
-        config.plugins = [
-          ...(config.plugins ?? []),
-          TanStackRouterRspack({
-            target: "react",
-            autoCodeSplitting: true,
-          }),
-          new FixMfDataUriPlugin(),
-        ];
-
-        return config;
+        Object.assign(config, {
+          target: "web",
+          output: {
+            ...(config.output ?? {}),
+            uniqueName: normalizedName,
+            chunkFilename: "static/js/async/[name].[contenthash].js",
+          },
+          resolve: {
+            ...(config.resolve ?? {}),
+            fallback: { bufferutil: false, "utf-8-validate": false },
+          },
+          infrastructureLogging: { level: "error" },
+          stats: "errors-warnings",
+          plugins: [
+            ...(config.plugins ?? []),
+            TanStackRouterRspack({ target: "react", autoCodeSplitting: true }),
+            new FixMfDataUriPlugin(),
+          ],
+        });
       },
     },
     output: {
