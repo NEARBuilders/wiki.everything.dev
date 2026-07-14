@@ -3,6 +3,7 @@ import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
   Building2,
   Edit2,
+  Globe,
   Key,
   LogOut,
   Mail,
@@ -15,7 +16,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { type Organization, type SessionData, sessionQueryOptions, useAuthClient } from "@/app";
+import {
+  getAccount,
+  getActiveRuntime,
+  type Organization,
+  type SessionData,
+  sessionQueryOptions,
+  useAuthClient,
+} from "@/app";
 import {
   ApiKeyForm,
   type ApiKeyFormValues,
@@ -25,6 +33,7 @@ import {
   Button,
   Card,
   CardContent,
+  InfoRow,
   Input,
   Tabs,
   TabsContent,
@@ -33,6 +42,7 @@ import {
 } from "@/components";
 import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
+import { WikiConfigCard } from "@/components/wiki-config-card";
 
 type AuthClientType = import("@/app").AuthClient;
 
@@ -107,6 +117,8 @@ function OrganizationDetail() {
   const orgId = org?.id ?? "";
   const activeOrgId = session?.session?.activeOrganizationId;
   const isActive = orgId === activeOrgId;
+  const wikiAccountId = (org?.metadata as Record<string, unknown> | null | undefined)
+    ?.wikiAccountId as string | undefined;
 
   const members =
     useQuery({
@@ -515,6 +527,12 @@ function OrganizationDetail() {
               <Key className="h-4 w-4 mr-1.5" />
               API Keys ({apiKeys.length})
             </TabsTrigger>
+            {wikiAccountId && (
+              <TabsTrigger value="wiki" className="shrink-0">
+                <Globe className="h-4 w-4 mr-1.5" />
+                Wiki
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="members" className="space-y-6 pt-4">
@@ -653,20 +671,19 @@ function OrganizationDetail() {
               <EmptyState label="No API keys" />
             )}
           </TabsContent>
+
+          {wikiAccountId && (
+            <TabsContent value="wiki" className="space-y-6 pt-4">
+              <WikiConfigCard
+                wikiAccountId={wikiAccountId}
+                parentAccount={getAccount()}
+                gatewayId={getActiveRuntime()?.gatewayId ?? "wiki.everything.dev"}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </PageContainer>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[100px_1fr] gap-4 rounded-[8px] border border-border bg-muted px-3.5 py-2.5 items-center">
-      <span className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
-        {label}
-      </span>
-      <span className="text-foreground text-[13px] break-all">{value}</span>
-    </div>
   );
 }
 

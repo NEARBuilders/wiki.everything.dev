@@ -4,9 +4,8 @@ import type { TransactionBuilder } from "near-kit";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { sessionQueryOptions, useApiClient, useAuthClient } from "@/app";
-import { Badge, Button } from "@/components";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Badge, Button, Field, FieldLabel, Input, Textarea } from "@/components";
+import { highlightJson } from "@/lib/json-highlight";
 
 type RegistryAppDetail = {
   accountId: string;
@@ -376,7 +375,8 @@ export function AppDetailContent({
         ) : (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Title" htmlFor="meta-title">
+              <Field>
+                <FieldLabel htmlFor="meta-title">Title</FieldLabel>
                 <Input
                   id="meta-title"
                   value={title}
@@ -384,8 +384,9 @@ export function AppDetailContent({
                   placeholder="App title"
                   className="h-9 text-sm"
                 />
-              </FormField>
-              <FormField label="Repo URL" htmlFor="meta-repo">
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="meta-repo">Repo URL</FieldLabel>
                 <Input
                   id="meta-repo"
                   value={repoUrl}
@@ -393,8 +394,9 @@ export function AppDetailContent({
                   placeholder="https://github.com/..."
                   className="h-9 text-sm"
                 />
-              </FormField>
-              <FormField label="Homepage URL" htmlFor="meta-homepage">
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="meta-homepage">Homepage URL</FieldLabel>
                 <Input
                   id="meta-homepage"
                   value={homepageUrl}
@@ -402,8 +404,9 @@ export function AppDetailContent({
                   placeholder="https://..."
                   className="h-9 text-sm"
                 />
-              </FormField>
-              <FormField label="Image URL" htmlFor="meta-image">
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="meta-image">Image URL</FieldLabel>
                 <Input
                   id="meta-image"
                   value={imageUrl}
@@ -411,18 +414,19 @@ export function AppDetailContent({
                   placeholder="https://..."
                   className="h-9 text-sm"
                 />
-              </FormField>
+              </Field>
             </div>
-            <FormField label="Description" htmlFor="meta-desc">
-              <textarea
+            <Field>
+              <FieldLabel htmlFor="meta-desc">Description</FieldLabel>
+              <Textarea
                 id="meta-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 placeholder="Short description"
-                className="flex w-full rounded-md border-2 border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-ring transition-[color,box-shadow]"
+                className="text-sm"
               />
-            </FormField>
+            </Field>
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => publishMutation.mutate()} disabled={isAnyPending} size="sm">
@@ -556,122 +560,4 @@ function RuntimeRow({
       )}
     </div>
   );
-}
-
-function FormField({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label
-        htmlFor={htmlFor}
-        className="text-xs uppercase tracking-wide text-muted-foreground font-semibold"
-      >
-        {label}
-      </Label>
-      {children}
-    </div>
-  );
-}
-
-function highlightJson(json: string): ReactNode {
-  const lines = json.split("\n");
-  return (
-    <>
-      {lines.map((line, i) => (
-        <div key={i} className="flex">
-          <span className="text-background/30 mr-4 select-none text-right w-8 shrink-0">
-            {i + 1}
-          </span>
-          <span>{syntaxHighlightLine(line)}</span>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function syntaxHighlightLine(line: string): ReactNode {
-  const tokens: ReactNode[] = [];
-  let remaining = line;
-  let key = 0;
-
-  const patterns = [
-    {
-      re: /("(?:[^"\\]|\\.)*")\s*:/,
-      render: (_m: string, k: string) => (
-        <span key={key++} className="text-background/80">
-          {k}
-        </span>
-      ),
-    },
-    {
-      re: /"(?:[^"\\]|\\.)*"/,
-      render: (_m: string, s: string) => (
-        <span key={key++} className="text-brand-accent">
-          {s}
-        </span>
-      ),
-    },
-    {
-      re: /\b(true|false)\b/,
-      render: (_m: string, b: string) => (
-        <span key={key++} className="text-yellow-300">
-          {b}
-        </span>
-      ),
-    },
-    {
-      re: /\bnull\b/,
-      render: (_m: string, _g?: string) => (
-        <span key={key++} className="text-muted-foreground">
-          null
-        </span>
-      ),
-    },
-    {
-      re: /(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/,
-      render: (_m: string, n: string) => (
-        <span key={key++} className="text-blue-300">
-          {n}
-        </span>
-      ),
-    },
-  ];
-
-  let matched = false;
-  for (const { re, render } of patterns) {
-    const match = remaining.match(re);
-    if (match && match.index === 0) {
-      tokens.push((render as (...args: string[]) => ReactNode)(match[0], ...match.slice(1)));
-      remaining = remaining.slice(match[0].length);
-      matched = true;
-      break;
-    }
-  }
-
-  if (!matched) {
-    if (remaining.length === 0) {
-      return <span key="rest" />;
-    }
-    const char = remaining[0];
-    tokens.push(<span key={key++}>{char}</span>);
-    remaining = remaining.slice(1);
-  }
-
-  if (remaining.length > 0) {
-    return (
-      <>
-        {tokens}
-        {syntaxHighlightLine(remaining)}
-      </>
-    );
-  }
-
-  return <>{tokens}</>;
 }

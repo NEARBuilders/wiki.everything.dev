@@ -4,9 +4,10 @@ import { Sparkles } from "lucide-react";
 import type { TransactionBuilder } from "near-kit";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useApiClient, useAuthClient } from "@/app";
-import { Button, Card, CardContent, Input } from "@/components";
+import { getAccount, getActiveRuntime, useApiClient, useAuthClient } from "@/app";
+import { Button, Card, CardContent, Field, FieldLabel, Input } from "@/components";
 import { PageContainer } from "@/components/layout/page-container";
+import { StepList, useStepper } from "@/components/ui/stepper";
 
 export const Route = createFileRoute("/_layout/_authenticated/wiki/new")({
   head: () => ({
@@ -40,11 +41,27 @@ const RESERVED_SUBDOMAINS = [
   "abuse",
 ];
 
+const CREATION_STEPS = [
+  { label: "Checking subaccount availability", blocking: true },
+  { label: "Creating NEAR subaccount", blocking: true },
+  { label: "Creating organization", blocking: true },
+  { label: "Registering wiki", blocking: true },
+  { label: "Setting active organization", blocking: false },
+  { label: "Publishing registry metadata", blocking: false },
+  { label: "Publishing tenant config", blocking: false },
+  { label: "Redirecting", blocking: false },
+] as const;
+
+const METADATA_GAS = "10000000000000";
+const CONFIG_GAS = "300000000000000";
+
 function NewWikiPage() {
   const apiClient = useApiClient();
   const auth = useAuthClient();
   const [subdomain, setSubdomain] = useState("");
   const [name, setName] = useState("");
+
+  const gatewayId = getActiveRuntime()?.gatewayId ?? "wiki.everything.dev";
 
   const generateSubdomain = (value: string) =>
     value
@@ -70,15 +87,17 @@ function NewWikiPage() {
     }
   };
 
+  const { steps, resetSteps, runStep, updateStep } = useStepper(CREATION_STEPS);
+
   const createMutation = useMutation({
     mutationFn: async () => {
+      resetSteps();
+
       const nearAccountId = auth.near.getAccountId();
       if (!nearAccountId) {
         throw new Error("Connect a NEAR wallet first");
       }
 
-      const namespaceAccountId = "wiki.everything.near";
-      const accountId = `${subdomain}.${namespaceAccountId}`;
       const publicKey = auth.near.getState()?.publicKey;
       if (!publicKey) {
         throw new Error("No NEAR public key available");
@@ -88,43 +107,78 @@ function NewWikiPage() {
         throw new Error(`"${subdomain}" is a reserved subdomain`);
       }
 
-      const availability = await auth.near.checkSubAccountAvailability({
-        subAccountName: subdomain,
-      });
+      const parentAccount = getAccount();
+
+      updateStep(0, "running");
+      let availability: Awaited<ReturnType<typeof auth.near.checkSubAccountAvailability>>;
+      try {
+        availability = await auth.near.checkSubAccountAvailability({
+          subAccountName: subdomain,
+        });
+        updateStep(0, "success");
+      } catch (err) {
+        updateStep(0, "failed", err instanceof Error ? err.message : String(err));
+        throw err;
+      }
       if (availability.error) throw new Error(availability.error.message);
       if (!availability.data?.available) {
         throw new Error(`Subdomain "${subdomain}" is already taken`);
       }
 
-      const subAccountResult = await auth.near.createSubAccount({
-        subAccountName: subdomain,
-        publicKey,
-      });
-      if (subAccountResult.error) throw new Error(subAccountResult.error.message);
-
-      const orgResult = await auth.organization.create({
-        name,
-        slug: subdomain,
-        metadata: { wikiAccountId: accountId },
-      });
-      if (orgResult.error) throw new Error(orgResult.error.message);
-
-      const wikiResult = await apiClient.createWiki({
-        subdomain,
-        name,
-        accountId,
-        orgId: orgResult.data.id,
-      });
-
-      await auth.organization.setActive({ organizationId: orgResult.data.id });
-
+      updateStep(1, "running");
+      let subAccount: Awaited<ReturnType<typeof auth.near.createSubAccount>>;
       try {
+        subAccount = await auth.near.createSubAccount({
+          subAccountName: subdomain,
+          publicKey,
+        });
+        updateStep(1, "success");
+      } catch (err) {
+        updateStep(1, "failed", err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+      if (subAccount.error) throw new Error(subAccount.error.message);
+
+      const accountId = subAccount.data?.accountId ?? `${subdomain}.${parentAccount}`;
+
+      const org = await runStep(2, () =>
+        auth.organization.create({
+          name,
+          slug: subdomain,
+          metadata: { wikiAccountId: accountId },
+        }),
+      );
+      if (!org) throw new Error(steps[2].error ?? "Failed to create organization");
+      if (org.error) throw new Error(org.error.message);
+      if (!org.data) throw new Error("Organization creation returned no data");
+      const orgData = org.data;
+
+      const wiki = await runStep(3, () =>
+        apiClient.createWiki({
+          subdomain,
+          name,
+          accountId,
+          orgId: orgData.id,
+        }),
+      );
+      if (!wiki) throw new Error(steps[3].error ?? "Failed to register wiki");
+
+      const setActive = await runStep(4, () =>
+        auth.organization.setActive({ organizationId: orgData.id }),
+      );
+      let hadFailures = false;
+      if (!setActive) {
+        hadFailures = true;
+        toast.warning("Failed to set active organization");
+      }
+
+      const metadata = await runStep(5, async () => {
         const prepared = await apiClient.apps.prepareRegistryMetadataWrite({
           accountId,
-          gatewayId: "wiki.everything.dev",
+          gatewayId,
           claimedBy: nearAccountId,
           title: name,
-          homepageUrl: `https://${subdomain}.wiki.everything.dev`,
+          homepageUrl: `https://${subdomain}.${gatewayId}`,
         });
 
         const signed = await auth.near.buildSignedDelegateAction(
@@ -134,28 +188,82 @@ function NewWikiPage() {
               prepared.data.contractId,
               prepared.data.methodName,
               prepared.data.args,
-              { gas: "10000000000000", attachedDeposit: 0n },
+              { gas: METADATA_GAS, attachedDeposit: 0n },
             ),
         );
 
-        await auth.near.relayTransaction({ payload: signed });
-      } catch (err) {
-        console.warn("[Wiki] Registry publish failed (non-blocking):", err);
-        toast.warning(
-          "Wiki created, but registry publish failed. You can retry from the apps page.",
-        );
+        const relayed = await auth.near.relayTransaction({ payload: signed });
+        if (relayed.error) throw new Error(relayed.error.message);
+        return relayed;
+      });
+      if (!metadata) {
+        hadFailures = true;
+        toast.warning("Registry metadata publish failed — non-blocking");
       }
 
-      return { wiki: wikiResult, accountId, orgId: orgResult.data.id };
+      const config = await runStep(6, async () => {
+        const tenantConfig = {
+          extends: `bos://${parentAccount}/${gatewayId}`,
+          account: accountId,
+          domain: `${subdomain}.${gatewayId}`,
+          title: name,
+          description: name,
+        };
+
+        const prepared = await apiClient.apps.prepareRegistryConfigWrite({
+          accountId,
+          gatewayId,
+          config: tenantConfig,
+        });
+
+        const signed = await auth.near.buildSignedDelegateAction(
+          prepared.data.contractId,
+          (builder: TransactionBuilder) =>
+            builder.functionCall(
+              prepared.data.contractId,
+              prepared.data.methodName,
+              prepared.data.args,
+              { gas: CONFIG_GAS, attachedDeposit: 0n },
+            ),
+        );
+
+        const relayed = await auth.near.relayTransaction({ payload: signed });
+        if (relayed.error) throw new Error(relayed.error.message);
+        return relayed;
+      });
+      if (!config) {
+        hadFailures = true;
+        toast.warning("Tenant config publish failed — non-blocking");
+      }
+
+      return {
+        wiki,
+        accountId,
+        orgId: orgData.id,
+        hadFailures,
+      };
     },
-    onSuccess: async () => {
-      toast.success(`Wiki "${name}" created`);
+    onSuccess: async (result) => {
+      if (result.hadFailures) {
+        toast.warning(
+          `Wiki "${name}" created — some non-critical steps failed. See details below.`,
+        );
+      } else {
+        toast.success(`Wiki "${name}" created`);
+      }
+
+      updateStep(7, "running");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      updateStep(7, "success");
+
       window.location.href = "/";
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to create wiki");
     },
   });
+
+  const isCreating = createMutation.isPending;
 
   return (
     <PageContainer variant="narrow">
@@ -179,16 +287,19 @@ function NewWikiPage() {
         >
           <Card>
             <CardContent className="p-6 space-y-4">
-              <Field label="wiki name" htmlFor="wiki-name">
+              <Field>
+                <FieldLabel htmlFor="wiki-name">wiki name</FieldLabel>
                 <Input
                   id="wiki-name"
                   value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="Star Wars Wiki"
                   required
+                  disabled={isCreating}
                 />
               </Field>
-              <Field label="subdomain" htmlFor="wiki-subdomain">
+              <Field>
+                <FieldLabel htmlFor="wiki-subdomain">subdomain</FieldLabel>
                 <div className="flex items-center gap-2">
                   <Input
                     id="wiki-subdomain"
@@ -197,9 +308,10 @@ function NewWikiPage() {
                     placeholder="star-wars"
                     pattern="[a-z0-9-]+"
                     required
+                    disabled={isCreating}
                   />
                   <span className="text-xs text-muted-foreground whitespace-nowrap font-mono">
-                    .wiki.everything.dev
+                    .{gatewayId}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
@@ -210,67 +322,67 @@ function NewWikiPage() {
           </Card>
 
           <div className="flex gap-2">
-            <Button
-              type="submit"
-              disabled={createMutation.isPending || !name || !subdomain}
-              variant="outline"
-            >
-              {createMutation.isPending ? "creating..." : "create wiki"}
+            <Button type="submit" disabled={isCreating || !name || !subdomain} variant="outline">
+              {isCreating ? "creating..." : "create wiki"}
             </Button>
           </div>
         </form>
 
-        <section className="space-y-4">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-            What Happens
-          </h2>
-          <Card>
-            <CardContent className="p-4 space-y-2 text-xs text-muted-foreground">
-              <p>
-                1. <strong>NEAR subaccount</strong> — {subdomain || "{subdomain}"}
-                .wiki.everything.near is created and linked to your wallet
-              </p>
-              <p>
-                2. <strong>Organization</strong> — A Better-Auth organization is created (you become
-                owner)
-              </p>
-              <p>
-                3. <strong>Wiki row</strong> — The wiki is registered in the database
-              </p>
-              <p>
-                4. <strong>Registry</strong> — The wiki is published to the apps registry for UI
-                override support
-              </p>
-              <p>
-                5. <strong>Redirect</strong> — You're sent to your new wiki
-              </p>
-              <p className="text-muted-foreground/60 pt-1">
-                Funded subaccount (≥0.1 NEAR). Parent retains full-access key for recovery. You can
-                delete and reclaim later.
-              </p>
-            </CardContent>
-          </Card>
-        </section>
+        {isCreating || createMutation.isSuccess || createMutation.isError ? (
+          <section className="space-y-4">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Progress
+            </h2>
+            <Card>
+              <CardContent className="p-4 space-y-3">
+                <StepList steps={steps} />
+              </CardContent>
+            </Card>
+          </section>
+        ) : (
+          <section className="space-y-4">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              What Happens
+            </h2>
+            <Card>
+              <CardContent className="p-4 space-y-2 text-xs text-muted-foreground">
+                <p>
+                  1. <strong>NEAR subaccount</strong> — {subdomain || "{subdomain}"}.{gatewayId} is
+                  created and linked to your wallet
+                </p>
+                <p>
+                  2. <strong>Organization</strong> — A Better-Auth organization is created (you
+                  become owner)
+                </p>
+                <p>
+                  3. <strong>Wiki row</strong> — The wiki is registered in the database
+                </p>
+                <p>
+                  4. <strong>Active org</strong> — Your session switches to the new organization
+                </p>
+                <p>
+                  5. <strong>Registry metadata</strong> — Title and homepage published to the apps
+                  registry
+                </p>
+                <p>
+                  6. <strong>Tenant config</strong> — A bos.config.json extending this gateway is
+                  published to FastKV, making the wiki live at{" "}
+                  <code className="font-mono">
+                    {subdomain || "{subdomain}"}.{gatewayId}
+                  </code>
+                </p>
+                <p>
+                  7. <strong>Redirect</strong> — You're sent to your new wiki
+                </p>
+                <p className="text-muted-foreground/60 pt-1">
+                  Funded subaccount (≥0.1 NEAR). Parent retains full-access key for recovery. You
+                  can delete and reclaim later.
+                </p>
+              </CardContent>
+            </Card>
+          </section>
+        )}
       </div>
     </PageContainer>
-  );
-}
-
-function Field({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <label htmlFor={htmlFor} className="text-xs uppercase tracking-wide text-muted-foreground">
-        {label}
-      </label>
-      {children}
-    </div>
   );
 }

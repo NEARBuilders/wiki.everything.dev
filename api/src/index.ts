@@ -21,7 +21,7 @@ export default createPlugin.withPlugins<PluginsClient>()({
 
   contract,
 
-  initialize: (config, plugins) =>
+  initialize: (config) =>
     Effect.gen(function* () {
       const database = DatabaseLive(config.secrets.API_DATABASE_URL);
       const wikisLayer = WikisLive.pipe(Layer.provide(database));
@@ -30,14 +30,9 @@ export default createPlugin.withPlugins<PluginsClient>()({
       const wikisService = yield* Effect.provide(WikisTag, wikisLayer);
       const articlesService = yield* Effect.provide(ArticlesTag, articlesLayer);
 
-      const { auth, ...restPlugins } = plugins;
       console.log("[API] Services Initialized");
-      console.log("[API] Auth client available:", Boolean(auth));
-      console.log("[API] Plugins available:", Object.keys(restPlugins).join(", ") || "none");
 
       return {
-        auth,
-        plugins: restPlugins,
         wikis: wikisService,
         articles: articlesService,
       };

@@ -37,11 +37,17 @@ export {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
+export { Field, FieldLabel } from "./ui/field";
+export { InfoRow } from "./ui/info-row";
 export { Input } from "./ui/input";
 export { Label } from "./ui/label";
 export { ScrollArea, ScrollBar } from "./ui/scroll-area";
 export { Skeleton } from "./ui/skeleton";
+export { Spinner } from "./ui/spinner";
+export { type Step, StepIcon, StepList, type StepState, useStepper } from "./ui/stepper";
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+export { Textarea } from "./ui/textarea";
 export { UnderConstruction } from "./under-construction";
+export { WikiConfigCard } from "./wiki-config-card";
 export { WikiHeader } from "./wiki-header";
 export { WikiSidebar } from "./wiki-sidebar";

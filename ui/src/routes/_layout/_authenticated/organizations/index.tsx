@@ -247,6 +247,9 @@ function OrganizationsList() {
                 const isPersonal = user
                   ? org.slug === user.id || org.metadata?.isPersonal === true
                   : false;
+                const hasWiki = Boolean(
+                  (org.metadata as Record<string, unknown> | null | undefined)?.wikiAccountId,
+                );
 
                 return (
                   <Card key={org.id} className="p-6 space-y-5 hover:shadow-md">
@@ -269,6 +272,7 @@ function OrganizationsList() {
                           </span>
                           {isActive && <Chip>active</Chip>}
                           {isPersonal && <Chip>personal</Chip>}
+                          {hasWiki && <Chip>wiki</Chip>}
                         </div>
                         <div className="text-sm font-mono text-muted-foreground">@{org.slug}</div>
                       </div>

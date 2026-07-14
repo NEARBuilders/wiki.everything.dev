@@ -28,17 +28,17 @@
     },
     "ui": {
       "development": "local:ui",
-      "production": "https://elliot-braem-5707-ui-wiki-everything-dev-nearbuil-a2a9f4ebb-ze.zephyrcloud.app",
-      "integrity": "sha384-hTlpEX2gU86hdbVp7boUTfAtmaukV8b0Ls+RMpJyUrpbRauOOwza45bJdIEJHZr9",
-      "ssr": "https://elliot-braem-5708-ui-wiki-everything-dev-nearbuil-6b9cf8e00-ze.zephyrcloud.app",
-      "ssrIntegrity": "sha384-xPPpIC2FpacUI6vpDQEbkZIF/J/NzbF2fsQ+LJ3XE2nbKKwGQPZ5ESK3T1q2QFER"
+      "production": "https://elliot-braem-5740-ui-wiki-everything-dev-nearbuil-f9e11a61b-ze.zephyrcloud.app",
+      "integrity": "sha384-bACOM66JlXQS8i4qnL1LBcnQdatGXaM/1chR43wQGwCUS6Enmyin1V9XfnJotzxp",
+      "ssr": "https://elliot-braem-5741-ui-wiki-everything-dev-nearbuil-b31545797-ze.zephyrcloud.app",
+      "ssrIntegrity": "sha384-OATL8BVqNuZVcHBCsZDSnfcV38+Owh/x/LTsQMELu6RW8wnLMsMg4HN6jytrChR8"
     },
     "api": {
       "development": "local:api",
       "secrets": [
         "API_DATABASE_URL"
       ],
-      "production": "https://elliot-braem-5709-api-wiki-everything-dev-nearbui-6e67c3537-ze.zephyrcloud.app",
+      "production": "https://elliot-braem-5742-api-wiki-everything-dev-nearbui-6121aa880-ze.zephyrcloud.app",
       "integrity": "sha384-AWHrVaHLXwHcQ97+2OFvj9Aw7WYyyGJ4Nn3poCnwQPXqaAP22/n6Jn3Xhq5/+o4G"
     },
     "auth": {
@@ -62,6 +62,9 @@
     }
   },
   "plugins": {
+    "apps": {
+      "development": "local:plugins/apps"
+    },
     "wiki-editor-collaborative": {
       "development": "local:plugins/wiki-editor-collaborative",
       "production": "https://elliot-braem-5710-wiki-editor-collaborative-wiki--8dd495171-ze.zephyrcloud.app",
