@@ -118,8 +118,7 @@ function contentToString(content: unknown): string {
 export const ArticlesLive = Layer.effect(
   ArticlesTag,
   Effect.gen(function* () {
-    const driver = yield* DatabaseTag;
-    const db = driver.db;
+    const db = yield* DatabaseTag;
 
     const service: ArticlesService = {
       getArticle: async (wikiId, slug) => {
@@ -437,7 +436,7 @@ export const ArticlesLive = Layer.effect(
           const data = rows.slice(0, limit);
 
           return {
-            rows: data.map((r) => ({
+            rows: data.map((r: { slug: string; updatedAt: Date; subdomain: string }) => ({
               slug: r.slug,
               updatedAt:
                 r.updatedAt instanceof Date ? r.updatedAt.toISOString() : String(r.updatedAt),

@@ -43,8 +43,7 @@ function toWikiRecord(row: WikiRow): WikiRecord {
 export const WikisLive = Layer.effect(
   WikisTag,
   Effect.gen(function* () {
-    const driver = yield* DatabaseTag;
-    const db = driver.db;
+    const db = yield* DatabaseTag;
 
     const service: WikisService = {
       createWiki: async (input) => {
