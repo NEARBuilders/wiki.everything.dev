@@ -5,7 +5,6 @@ import { z } from "every-plugin/zod";
 
 import { contract } from "./contract";
 import { ContextSchema } from "./lib/context";
-import type { PluginsClient } from "./plugins-client.gen";
 import { CollabEditorService } from "./service";
 
 type CollabEvents = {
@@ -16,7 +15,7 @@ type CollabEvents = {
   };
 };
 
-export default createPlugin.withPlugins<PluginsClient>()({
+export default createPlugin({
   variables: z.object({}),
 
   secrets: z.object({}),

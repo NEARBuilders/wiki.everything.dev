@@ -5,7 +5,6 @@ import { z } from "every-plugin/zod";
 
 import { contract } from "./contract";
 import { ContextSchema } from "./lib/context";
-import type { PluginsClient } from "./plugins-client.gen";
 import { TemplateService } from "./service";
 
 type BackgroundEvents = {
@@ -36,7 +35,7 @@ type BackgroundEvents = {
  * and context.organization?.member?.role.
  * Access NEAR account via context.near?.primaryAccountId.
  */
-export default createPlugin.withPlugins<PluginsClient>()({
+export default createPlugin({
   variables: z.object({
     baseUrl: z.url().default("https://api.example.com"),
     timeout: z.number().min(1000).max(60000).default(10000),
