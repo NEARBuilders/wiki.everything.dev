@@ -1,1 +1,1 @@
-CREATE INDEX "articles_content_fts_idx" ON "articles" USING gin (to_tsvector('english', coalesce("content"::text, '')));
+CREATE INDEX IF NOT EXISTS "articles_content_fts_idx" ON "articles" USING gin (to_tsvector('english', coalesce("content"::text, '')));
