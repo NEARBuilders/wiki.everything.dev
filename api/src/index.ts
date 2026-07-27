@@ -21,14 +21,14 @@ export default createPlugin.withPlugins<PluginsClient>()({
 
   contract,
 
-  initialize: (config) =>
+  initialize: (config, _plugins, tools) =>
     Effect.gen(function* () {
       const database = DatabaseLive(config.secrets.API_DATABASE_URL);
       const wikisLayer = WikisLive.pipe(Layer.provide(database));
       const articlesLayer = ArticlesLive.pipe(Layer.provide(database));
 
-      const wikisService = yield* Effect.provide(WikisTag, wikisLayer);
-      const articlesService = yield* Effect.provide(ArticlesTag, articlesLayer);
+      const wikisService = yield* tools.buildService(WikisTag, wikisLayer);
+      const articlesService = yield* tools.buildService(ArticlesTag, articlesLayer);
 
       console.log("[API] Services Initialized");
 
