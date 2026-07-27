@@ -1,12 +1,54 @@
 import { createInstance, getInstance } from "@module-federation/enhanced/runtime";
 import { setGlobalFederationInstance } from "@module-federation/runtime-core";
 import { createPluginRuntime } from "every-plugin";
-import { Context, Effect, Layer } from "every-plugin/effect";
+import { Config, ConfigProvider, Context, Data, Effect, Layer, Secret } from "every-plugin/effect";
 import { IntegrityRegistry, verifyConfigAgainstChain } from "everything-dev/integrity";
 import { installIntegrityFetchHook } from "everything-dev/mf";
 import type { RuntimeConfig, SharedConfig } from "everything-dev/types";
-import { ConfigService } from "./config";
+import { logger } from "../utils/logger";
+import { ConfigService, readCorsOrigins } from "./config";
 import { PluginError } from "./errors";
+
+function unwrapErrorMessage(error: unknown): string {
+  if (!error) return "";
+  let current: unknown = error;
+  while (
+    current &&
+    typeof current === "object" &&
+    "cause" in current &&
+    (current as any).cause instanceof Error &&
+    typeof (current as any)._tag === "string" &&
+    !(current as any).message
+  ) {
+    current = (current as any).cause;
+  }
+  return current instanceof Error ? current.message : String(current ?? "");
+}
+
+class PluginBootstrapError extends Data.TaggedError("PluginBootstrapError")<{
+  pluginKey: string;
+  pluginUrl?: string;
+  stage: "load" | "init" | "db-preflight" | "db-migration";
+  dbSecret?: string;
+  dbUrlMasked?: string;
+  execution: "local-host-process";
+  cause: unknown;
+}> {
+  get message() {
+    const raw = unwrapErrorMessage(this.cause);
+    return `Plugin ${this.pluginKey}${this.pluginUrl ? ` at ${this.pluginUrl}` : ""} failed: ${raw}`;
+  }
+}
+
+function dbUrlSummary(url: string | undefined): string {
+  if (!url || url === "unset") return "unset";
+  try {
+    const u = new URL(url);
+    return `${u.hostname}:${u.port || 5432}/${u.pathname.split("/").filter(Boolean).pop() || "?"}`;
+  } catch {
+    return url.replace(/:[^:@]+@/, ":****@");
+  }
+}
 
 export interface InitializedPluginResult {
   context: unknown;
@@ -173,7 +215,7 @@ async function registerAppSharedDeps(
         },
       };
     } catch (error) {
-      console.error(`[Plugins] Failed to preload shared dependency ${name}: ${formatError(error)}`);
+      logger.error(`[Plugins] Failed to preload shared dependency ${name}: ${formatError(error)}`);
       throw new Error(
         `Shared dependency "${name}" is configured in bos.config.json but could not be resolved. ` +
           `Ensure it is installed in the host workspace.`,
@@ -189,12 +231,12 @@ async function registerAppSharedDeps(
       shared: sharedEntries,
     });
     setGlobalFederationInstance(instance);
-    console.log(
+    logger.info(
       `[Plugins] Pre-registered ${Object.keys(sharedEntries).length} app-specific shared dep(s)`,
     );
   } else {
     instance.registerShared(sharedEntries);
-    console.log(
+    logger.info(
       `[Plugins] Augmented existing MF instance with ${Object.keys(sharedEntries).length} app-specific shared dep(s)`,
     );
   }
@@ -239,32 +281,117 @@ function collectSecrets(config: { secrets?: string[] }): Record<string, string> 
   return secretsFromEnv(config.secrets ?? []);
 }
 
-async function loadPluginEntry(
+function readDbSecret(key: string): Effect.Effect<Secret.Secret> {
+  return Config.secret(key).pipe(
+    Effect.catchAll(() => Effect.succeed(Secret.fromString("unset"))),
+    Effect.withConfigProvider(ConfigProvider.fromEnv()),
+  );
+}
+
+function buildAuthBaseVariables(
+  config: RuntimeConfig,
+  corsOrigins: string[],
+): Record<string, unknown> {
+  const rawHostUrl =
+    config.env === "development"
+      ? (config.host?.url ?? `http://localhost:${config.host?.port ?? 3000}`)
+      : config.domain;
+  const hostUrl = normalizeDomain(rawHostUrl, config.env);
+  const base: Record<string, unknown> = {
+    account: config.account,
+    domain: hostUrl,
+    hostUrl,
+  };
+  if (corsOrigins.length > 0) {
+    base.trustedOrigins = corsOrigins;
+  }
+  return base;
+}
+
+function logBootstrapError(err: PluginBootstrapError): Effect.Effect<void> {
+  return Effect.gen(function* () {
+    if (err.dbSecret) {
+      yield* Effect.logError(`[Plugins] Failed to load ${err.pluginKey} plugin: ${err.message}`);
+      if (err.dbUrlMasked) {
+        const dbLabel = err.pluginKey === "auth" ? "Auth" : "API";
+        yield* Effect.logError(
+          `[Plugins] ${dbLabel} DB URL: ${err.dbUrlMasked} (${dbUrlSummary(err.dbUrlMasked)})`,
+        );
+      }
+      if (err.stage === "init") {
+        yield* Effect.logError(
+          `[Plugins] Set ${err.dbSecret} in your .env file or ensure local postgres is running for ${err.pluginKey} plugin initialization`,
+        );
+      }
+    } else {
+      yield* Effect.logError(
+        `[Plugins] Plugin "${err.pluginKey}" (${err.pluginUrl ?? "unknown"}) failed: ${err.message}`,
+      );
+    }
+  });
+}
+
+function loadPluginEntryEffect(
   runtime: any,
   entry: RuntimePluginEntry,
   integrityRegistry: IntegrityRegistry,
   pluginsClient?: Record<string, unknown>,
   baseVariables?: Record<string, unknown>,
-): Promise<HostPluginEntry> {
-  if (entry.config.integrity) {
-    integrityRegistry.registerEntry(entry.config.url, entry.config.integrity);
-  }
+): Effect.Effect<HostPluginEntry, PluginBootstrapError> {
+  return Effect.gen(function* () {
+    if (entry.config.integrity) {
+      integrityRegistry.registerEntry(entry.config.url, entry.config.integrity);
+    }
 
-  const variables: Record<string, unknown> = { ...baseVariables, ...entry.config.variables };
-  const args: [unknown, unknown?] = [{ variables, secrets: collectSecrets(entry.config) }];
-  if (pluginsClient) args.push(pluginsClient);
+    const isAuthOrApi = entry.key === "auth" || entry.key === "api";
+    const secretKey = isAuthOrApi
+      ? entry.key === "auth"
+        ? "AUTH_DATABASE_URL"
+        : "API_DATABASE_URL"
+      : null;
+    const dbSecret = secretKey ? yield* readDbSecret(secretKey) : null;
+    const rawDbUrl = dbSecret ? Secret.value(dbSecret) : null;
 
-  const result = await runtime.usePlugin(entry.runtimeId, ...args);
+    const variables: Record<string, unknown> = { ...baseVariables, ...entry.config.variables };
+    const args: [unknown, unknown?] = [{ variables, secrets: collectSecrets(entry.config) }];
+    if (pluginsClient) args.push(pluginsClient);
 
-  return { key: entry.key, name: entry.config.name, ...result };
+    const result = yield* Effect.tryPromise({
+      try: (): Promise<Omit<HostPluginEntry, "key" | "name">> =>
+        runtime.usePlugin(entry.runtimeId, ...args),
+      catch: (error) => {
+        if (rawDbUrl !== null && secretKey) {
+          const maskedUrl = rawDbUrl === "unset" ? "unset" : rawDbUrl.replace(/:[^:@]+@/, ":****@");
+          return new PluginBootstrapError({
+            pluginKey: entry.key,
+            pluginUrl: entry.config.url,
+            stage: rawDbUrl === "unset" ? "init" : "db-migration",
+            dbSecret: secretKey,
+            dbUrlMasked: maskedUrl,
+            execution: "local-host-process",
+            cause: error,
+          });
+        }
+        return new PluginBootstrapError({
+          pluginKey: entry.key,
+          pluginUrl: entry.config?.url ?? "unknown",
+          stage: "init",
+          execution: "local-host-process",
+          cause: error,
+        });
+      },
+    });
+
+    return { key: entry.key, name: entry.config.name, ...result };
+  });
 }
 
 export const initializePlugins = Effect.gen(function* () {
   const config: RuntimeConfig = yield* ConfigService;
 
   if (config.api.proxy) {
-    console.log(`[Plugins] Proxy mode enabled, skipping plugin initialization`);
-    console.log(`[Plugins] API requests will be proxied to: ${config.api.proxy}`);
+    yield* Effect.logInfo(`[Plugins] Proxy mode enabled, skipping plugin initialization`);
+    yield* Effect.logInfo(`[Plugins] API requests will be proxied to: ${config.api.proxy}`);
     return {
       runtime: null,
       auth: null,
@@ -283,18 +410,18 @@ export const initializePlugins = Effect.gen(function* () {
 
   const registryEntries = buildRegistryEntries(config);
   if (registryEntries.length === 0 && !config.auth) {
-    console.log("[Plugins] No remote plugins configured, using host API only");
+    yield* Effect.logInfo("[Plugins] No remote plugins configured, using host API only");
     return unavailableResult(config.api.name, null, null);
   }
 
-  console.log(`[Plugins] Registering ${registryEntries.length} plugin(s)`);
+  yield* Effect.logInfo(`[Plugins] Registering ${registryEntries.length} plugin(s)`);
 
   if (config.env === "production" && config.account) {
     const bosUrl = `bos://${config.account}/${config.domain ?? "everything.dev"}`;
     verifyConfigAgainstChain(config as unknown as Record<string, unknown>, bosUrl)
       .then(({ verified, mismatches }) => {
         if (!verified) {
-          console.error(
+          logger.error(
             `[Attestation] Config integrity does not match on-chain anchor. Mismatches: ${mismatches.join(", ")}`,
           );
         }
@@ -302,7 +429,7 @@ export const initializePlugins = Effect.gen(function* () {
       .catch(() => {});
   }
 
-  const result = yield* Effect.tryPromise({
+  const { runtime, integrityRegistry } = yield* Effect.tryPromise({
     try: async () => {
       const allEntries: RuntimePluginEntry[] = [];
 
@@ -315,11 +442,10 @@ export const initializePlugins = Effect.gen(function* () {
       const integrityRegistry = new IntegrityRegistry();
 
       const allEntriesWithUrls = allEntries.filter((e) => e.config.url);
-      console.log(
+      logger.info(
         `[Plugins] Registry entries: ${allEntriesWithUrls.map((e) => `${e.key}=${e.config.url}`).join(", ") || "none"}`,
       );
 
-      // Pre-register app-specific shared deps in host scope before every-plugin initializes
       await registerAppSharedDeps(
         mergeSharedMaps(config.api.shared, config.auth?.shared, collectPluginSharedDeps(config)),
       );
@@ -336,106 +462,7 @@ export const initializePlugins = Effect.gen(function* () {
         installIntegrityFetchHook(mfInstance, integrityRegistry);
       }
 
-      // Phase 0: Load auth plugin (app-level infrastructure)
-      let authPlugin: HostPluginEntry | null = null;
-      let authClient: ((ctx?: unknown) => unknown) | null = null;
-      if (config.auth?.url) {
-        const authEntry: RuntimePluginEntry = {
-          key: "auth",
-          runtimeId: config.auth.name,
-          config: config.auth,
-        };
-        try {
-          const normalizedDomain = normalizeDomain(
-            config.env === "development" ? "localhost:3000" : config.domain,
-            config.env,
-          );
-          const authBaseVariables: Record<string, unknown> = {
-            account: config.account,
-            domain: normalizedDomain,
-            hostUrl: normalizedDomain,
-          };
-
-          const corsOrigin = process.env.CORS_ORIGIN?.split(",").map((o) => o.trim());
-          if (corsOrigin) {
-            authBaseVariables.trustedOrigins = corsOrigin;
-          }
-
-          authPlugin = await loadPluginEntry(
-            runtime,
-            authEntry,
-            integrityRegistry,
-            undefined,
-            authBaseVariables,
-          );
-          authClient = authPlugin.createClient;
-          console.log(`[Plugins] Auth plugin loaded: ${authPlugin.name}`);
-        } catch (error) {
-          console.error(`[Plugins] Failed to load auth plugin: ${formatError(error)}`);
-        }
-      }
-
-      // Phase 1: Load all non-API plugins
-      const pluginEntries = registryEntries.filter((e) => e.key !== "api");
-
-      const pluginResults = await Promise.allSettled(
-        pluginEntries.map((entry) => loadPluginEntry(runtime, entry, integrityRegistry)),
-      );
-
-      const loadedPlugins: Record<string, HostPluginEntry> = {};
-      const loadedPluginKeys: string[] = [];
-      const pluginsClient: Record<string, unknown> = {};
-      const errors: string[] = [];
-
-      pluginResults.forEach((result, index) => {
-        const entry = pluginEntries[index];
-        const key = entry?.key ?? "unknown";
-        if (result.status === "fulfilled") {
-          loadedPlugins[key] = result.value;
-          loadedPluginKeys.push(key);
-          pluginsClient[key] = result.value.createClient;
-        } else {
-          const msg = formatError(result.reason);
-          errors.push(msg);
-          pluginsClient[key] = () => {
-            throw new Error(`Plugin "${key}" failed to load: ${msg}`);
-          };
-        }
-      });
-
-      // Phase 2: Load the API plugin with pluginsClient + authClient
-      let baseApi: HostPluginEntry | null = null;
-      const apiEntry = registryEntries.find((e) => e.key === "api");
-
-      if (apiEntry) {
-        try {
-          const apiPluginsClient: Record<string, unknown> = { ...pluginsClient };
-          if (authClient) {
-            apiPluginsClient.auth = authClient;
-          }
-
-          baseApi = await loadPluginEntry(runtime, apiEntry, integrityRegistry, apiPluginsClient);
-          loadedPlugins.api = baseApi;
-          loadedPluginKeys.unshift("api");
-        } catch (error) {
-          errors.push(formatError(error));
-        }
-      }
-
-      return {
-        runtime,
-        auth: authPlugin,
-        api: baseApi,
-        plugins: loadedPlugins,
-        authClient,
-        status: {
-          available: Boolean(baseApi),
-          pluginName: config.api.name,
-          error: errors.length > 0 ? errors.join("; ") : null,
-          errorDetails: errors.length > 0 ? errors.join("\n") : null,
-          loadedPlugins: loadedPluginKeys,
-        },
-      } satisfies PluginResult;
+      return { runtime, integrityRegistry };
     },
     catch: (error) =>
       new PluginError({
@@ -445,22 +472,137 @@ export const initializePlugins = Effect.gen(function* () {
       }),
   });
 
-  return result;
+  const errors: string[] = [];
+  const loadedPlugins: Record<string, HostPluginEntry> = {};
+  const loadedPluginKeys: string[] = [];
+  const pluginsClient: Record<string, unknown> = {};
+  let authPlugin: HostPluginEntry | null = null;
+  let authClient: ((ctx?: unknown) => unknown) | null = null;
+  let baseApi: HostPluginEntry | null = null;
+
+  if (config.auth?.url) {
+    yield* Effect.logInfo(`[Plugins] Loading auth plugin (${config.auth.name})`);
+    const authEntry: RuntimePluginEntry = {
+      key: "auth",
+      runtimeId: config.auth.name,
+      config: config.auth,
+    };
+    const authBaseVariables = buildAuthBaseVariables(config, yield* readCorsOrigins());
+    const authResult = yield* loadPluginEntryEffect(
+      runtime,
+      authEntry,
+      integrityRegistry,
+      undefined,
+      authBaseVariables,
+    ).pipe(
+      Effect.catchTag("PluginBootstrapError", (err: PluginBootstrapError) =>
+        Effect.gen(function* () {
+          yield* logBootstrapError(err);
+          return null;
+        }),
+      ),
+    );
+    if (authResult) {
+      authPlugin = authResult;
+      authClient = authResult.createClient;
+      yield* Effect.logInfo(`[Plugins] Auth plugin loaded: ${authResult.name}`);
+    }
+  }
+
+  const pluginEntries = registryEntries.filter((e) => e.key !== "api");
+
+  for (const entry of pluginEntries) {
+    yield* Effect.logInfo(`[Plugins] Loading plugin (${entry.key})`);
+    const result = yield* loadPluginEntryEffect(runtime, entry, integrityRegistry).pipe(
+      Effect.catchTag("PluginBootstrapError", (err: PluginBootstrapError) =>
+        Effect.gen(function* () {
+          yield* logBootstrapError(err);
+          errors.push(err.message);
+          pluginsClient[entry.key] = () => {
+            throw new Error(err.message);
+          };
+          return null;
+        }),
+      ),
+    );
+    if (result) {
+      loadedPlugins[entry.key] = result;
+      loadedPluginKeys.push(entry.key);
+      pluginsClient[entry.key] = result.createClient;
+      yield* Effect.logInfo(`[Plugins] Plugin loaded: ${entry.key}`);
+    }
+  }
+
+  const apiEntry = registryEntries.find((e) => e.key === "api");
+
+  if (apiEntry) {
+    yield* Effect.logInfo(`[Plugins] Loading API plugin (${apiEntry.config.name})`);
+    const apiPluginsClient: Record<string, unknown> = { ...pluginsClient };
+    if (authClient) {
+      apiPluginsClient.auth = authClient;
+    }
+    yield* Effect.logInfo(`[Plugins] API auth client available: ${Boolean(authClient)}`);
+    if (Object.keys(pluginsClient).length > 0) {
+      yield* Effect.logInfo(
+        `[Plugins] API plugins available: ${Object.keys(pluginsClient).join(", ")}`,
+      );
+    }
+    const apiResult = yield* loadPluginEntryEffect(
+      runtime,
+      apiEntry,
+      integrityRegistry,
+      apiPluginsClient,
+    ).pipe(
+      Effect.catchTag("PluginBootstrapError", (err: PluginBootstrapError) =>
+        Effect.gen(function* () {
+          yield* logBootstrapError(err);
+          errors.push(err.message);
+          return null;
+        }),
+      ),
+    );
+    if (apiResult) {
+      baseApi = apiResult;
+      loadedPlugins.api = apiResult;
+      loadedPluginKeys.unshift("api");
+      yield* Effect.logInfo(`[Plugins] API plugin loaded: ${apiResult.name}`);
+    }
+  }
+
+  const totalPlugins = [authPlugin, ...Object.values(loadedPlugins)].filter(Boolean).length;
+  yield* Effect.logInfo(`[Plugins] ${totalPlugins} plugin(s) loaded`);
+
+  return {
+    runtime,
+    auth: authPlugin,
+    api: baseApi,
+    plugins: loadedPlugins,
+    authClient,
+    status: {
+      available: Boolean(baseApi),
+      pluginName: config.api.name,
+      error: errors.length > 0 ? errors.join("; ") : null,
+      errorDetails: errors.length > 0 ? errors.join("\n") : null,
+      loadedPlugins: loadedPluginKeys,
+    },
+  } satisfies PluginResult;
 }).pipe(
-  Effect.catchAll((error) => {
-    const pluginName = error instanceof PluginError ? error.pluginName : null;
-    const pluginUrl = error instanceof PluginError ? error.pluginUrl : null;
-    const errorMessage = formatError(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
+  Effect.catchAll((error) =>
+    Effect.gen(function* () {
+      const pluginName = error instanceof PluginError ? error.pluginName : null;
+      const pluginUrl = error instanceof PluginError ? error.pluginUrl : null;
+      const errorMessage = formatError(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
 
-    console.error("[Plugins] ❌ Failed to initialize plugin");
-    console.error(`[Plugins] Plugin: ${pluginName}`);
-    console.error(`[Plugins] URL: ${pluginUrl}`);
-    console.error(`[Plugins] Error: ${errorMessage}`);
-    console.warn("[Plugins] Server will continue without plugin functionality");
+      yield* Effect.logError("[Plugins] ❌ Failed to initialize plugin");
+      yield* Effect.logError(`[Plugins] Plugin: ${pluginName}`);
+      yield* Effect.logError(`[Plugins] URL: ${pluginUrl}`);
+      yield* Effect.logError(`[Plugins] Error: ${errorMessage}`);
+      yield* Effect.logWarning("[Plugins] Server will continue without plugin functionality");
 
-    return Effect.succeed(unavailableResult(pluginName ?? null, errorMessage, errorStack ?? null));
-  }),
+      return unavailableResult(pluginName ?? null, errorMessage, errorStack ?? null);
+    }),
+  ),
 );
 
 export class PluginsService extends Context.Tag("host/PluginsService")<
@@ -475,7 +617,7 @@ export class PluginsService extends Context.Tag("host/PluginsService")<
       yield* Effect.addFinalizer(() =>
         Effect.promise(async () => {
           if (plugins.runtime) {
-            console.log("[Plugins] Shutting down plugin runtime...");
+            logger.info("[Plugins] Shutting down plugin runtime...");
             await plugins.runtime.shutdown();
           }
         }),

@@ -1,6 +1,6 @@
 {
   "name": "host",
-  "version": "1.12.2",
+  "version": "1.14.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@electric-sql/pglite": "catalog:",
     "@hono/node-server": "^2.0.1",
+    "@modelcontextprotocol/server": "catalog:",
     "@module-federation/enhanced": "catalog:",
     "@module-federation/node": "catalog:",
     "@module-federation/runtime-core": "catalog:",
@@ -24,13 +26,13 @@
     "@orpc/server": "catalog:",
     "@orpc/zod": "catalog:",
     "dotenv": "^17.2.3",
+    "effect": "catalog:",
     "every-plugin": "catalog:",
-    "pg": "catalog:",
-    "@electric-sql/pglite": "catalog:",
     "hono": "^4.12.18",
+    "hono-rate-limiter": "^0.5.3",
+    "pg": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "effect": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

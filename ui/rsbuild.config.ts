@@ -15,7 +15,7 @@ import { defineConfig } from "@rsbuild/core";
 import { pluginReact } from "@rsbuild/plugin-react";
 import { TanStackRouterRspack } from "@tanstack/router-plugin/rspack";
 import { FixMfDataUriPlugin } from "every-plugin/build/rspack";
-import { computeSriHashForUrl } from "everything-dev/integrity";
+import { computeSriHashForUrl, reportDeployResult } from "everything-dev/integrity";
 import { withZephyr } from "zephyr-rsbuild-plugin";
 import pkg from "./package.json";
 
@@ -94,33 +94,7 @@ const uiSharedDeps = {
   },
 };
 
-function updateBosConfig(field: "production" | "ssr", url: string, integrity?: string) {
-  try {
-    const configPath = path.resolve(__dirname, "../bos.config.json");
-    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-
-    if (!config.app.ui) {
-      console.error("   ❌ app.ui not found in bos.config.json");
-      return;
-    }
-
-    config.app.ui[field] = url;
-    const integrityField = field === "production" ? "integrity" : "ssrIntegrity";
-    if (integrity) {
-      config.app.ui[integrityField] = integrity;
-    } else {
-      delete config.app.ui[integrityField];
-    }
-    fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-    console.log(`   ✅ Updated bos.config.json: app.ui.${field}`);
-    if (integrity) {
-      console.log(`   ✅ Updated bos.config.json: app.ui.${integrityField}`);
-    }
-  } catch (err) {
-    console.error("   ❌ Failed to update bos.config.json:", (err as Error).message);
-  }
-}
-
+const uiBosConfigPath = path.resolve(__dirname, "../bos.config.json");
 function createClientConfig() {
   const plugins = [
     pluginReact(),
@@ -146,7 +120,13 @@ function createClientConfig() {
           onDeployComplete: async (info) => {
             console.log("🚀 UI Client Deployed:", info.url);
             const integrity = await computeSriHashForUrl(info.url);
-            updateBosConfig("production", info.url, integrity ?? undefined);
+            reportDeployResult({
+              url: info.url,
+              integrity,
+              bosConfigPath: uiBosConfigPath,
+              urlField: "app.ui.production",
+              integrityField: "app.ui.integrity",
+            });
           },
         },
       }),
@@ -177,7 +157,7 @@ function createClientConfig() {
       },
     },
     server: {
-      port: isServerBuild ? 3004 : 3003,
+      port: Number(process.env.PORT) || (isServerBuild ? 3004 : 3003),
       printUrls: ({ urls }) => urls.filter((url) => url.includes("localhost")),
       headers: {
         "Access-Control-Allow-Origin": "*",
@@ -252,7 +232,13 @@ function createServerConfig() {
             console.log("🚀 UI SSR Deployed:", info.url);
             const ssrEntryUrl = `${info.url.replace(/\/$/, "")}/remoteEntry.server.js`;
             const integrity = await computeSriHashForUrl(ssrEntryUrl, { resolveEntryUrl: false });
-            updateBosConfig("ssr", info.url, integrity ?? undefined);
+            reportDeployResult({
+              url: info.url,
+              integrity,
+              bosConfigPath: uiBosConfigPath,
+              urlField: "app.ui.ssr",
+              integrityField: "app.ui.ssrIntegrity",
+            });
           },
         },
       }),

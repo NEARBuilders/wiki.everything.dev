@@ -1,5 +1,140 @@
 # host
 
+## 1.14.0
+
+### Minor Changes
+
+- b189f4c: Add MCP (Model Context Protocol) server endpoint at `/api/mcp`. Auto-generates tools from the API's OpenAPI spec, proxying to existing oRPC routes in-process. Supports API key and session auth. Uses `@modelcontextprotocol/server` + `@modelcontextprotocol/hono` v2 with stateless Streamable HTTP transport.
+
+## 1.13.6
+
+### Patch Changes
+
+- a49c930: Set `Cross-Origin-Resource-Policy: cross-origin` on static asset responses (favicon, og:image, manifest, etc.) so social media crawlers and link-preview tools can load them cross-origin. HTML and API responses retain `same-origin` CORP.
+- 9d8b671: Strip `etag`/`last-modified` and override `cache-control` on proxied static assets to prevent Cloudflare from serving stale headers via 304 revalidation. Sets `cache-control: public, max-age=14400, s-maxage=300` (no `stale-while-revalidate`) so the CDN always does a full GET after 5 min, guaranteeing fresh response headers.
+- cf711d7: Extracted health/memory profiling into `host/src/routes/health.ts`. `/api/_health` now includes `memory` (rss, heapTotal, heapUsed, external in bytes + MB) and per-plugin metadata (key, name, remoteUrl, version). New `/api/_memory` endpoint accepts `?gc=true` to force GC before returning the memory snapshot. Documented `DB_POOL_MAX`, `DB_CONNECTION_TIMEOUT_MS`, `DB_IDLE_TIMEOUT_MS`, `DB_SSL_REJECT_UNAUTHORIZED` in `.env.example`.
+
+## 1.13.5
+
+### Patch Changes
+
+- 9a0220e: Simplify CSRF middleware: remove origin/referer whitelist and rely on Host header matching. Same-origin requests pass automatically (covering all tenant domains), no-Origin requests pass through (non-browser clients), and cross-origin POSTs from unserved origins are blocked.
+
+## 1.13.4
+
+### Patch Changes
+
+- fee6577: Fixed production host binding to port 443 (derived from the HTTPS CDN URL) instead of the planned listening port (3000, or `--port` flag value). The planner already resolved the correct port, but the `start` command discarded `plan.runtimeConfig` and stored the original — whose `host.port` came from `parsePort(remoteUrl)`. Now `start` uses `plan.runtimeConfig` so each app binds to its allocated port. Also stops deriving the listening port from the remote URL in `buildRuntimeConfig` for production; uses `DEFAULT_HOST_PORT` and lets the planner override.
+
+## 1.13.3
+
+### Patch Changes
+
+- 3f44bbb: Fixed SSR crash in `bos dev` with remote host and local UI without `--ssr` — the host no longer attempts SSR from the browser dev server (which doesn't serve `remoteEntry.server.js`). SSR is only attempted when an SSR URL is explicitly configured.
+
+  Fixed silent error suppression in the host API router interceptor — `formatORPCError` output is now properly `console.error`'d, matching the publicRpcRouters pattern.
+
+  Fixed `formatORPCError` box-drawing output to split messages on newlines and re-prefix each line with `│`, preventing misalignment when Drizzle's `Failed query` messages (which contain `\n`) are surfaced. The underlying PostgreSQL error is now visible in the error box.
+
+  Fixed framework-level scope lifecycle bug where `Layer.scoped` resources created in plugin `initialize` with `Effect.provide(...)` were tied to a transient scope and released immediately after initialization. Database pools and other long-lived scoped resources now persist correctly.
+
+  Added `PluginServicesTools` with a `buildService(tag, layer)` helper that builds scoped resources using `Layer.buildWithMemoMap` bound to the plugin lifecycle scope. Resources are automatically released on plugin shutdown.
+
+  Added `registerPlugin()` lifecycle tracking — initialized plugins are now registered with `PluginLifecycleService` so `shutdown()` and `cleanup()` correctly release plugin resources.
+
+  Fixed `evictPlugin()` cache key mismatch — eviction now uses the same key generation as `usePlugin`, so eviction correctly finds and shuts down cached plugins.
+
+  Added a per-plugin `MemoMap` for deduplicated layer construction when using `tools.buildService`.
+
+## 1.13.2
+
+### Patch Changes
+
+- 58272ad: Refactor plugin bootstrap to Effect-native error channel and route `CORS_ORIGIN` through Effect's `Config` primitive.
+
+  - `host/src/services/plugins.ts`: `initializePlugins` splits the single `Effect.tryPromise` into a narrow host-infra `tryPromise` (→ `PluginError`) plus per-phase `Effect.gen` steps for auth / non-api plugins / api. Each phase catches `PluginBootstrapError` via `Effect.catchTag` and routes through one shared `logBootstrapError` helper, collapsing three duplicated catch blocks. DB URL secrets now read via `Config.secret` + `Secret` (raw value only touched via `Secret.value` at the masking point); missing env maps to `Secret("unset")` through `catchAll`. `PluginBootstrapError` gains a `message` getter matching the `errors.ts` pattern. Logging inside Effect-managed regions moved to `yield* Effect.logInfo/logError`.
+  - `host/src/services/plugins.ts`: `buildAuthBaseVariables` simplified — removes dead `/remoteEntry.js`/`/mf-manifest.json` regex stripping (those URLs live on `config.host.entry`, never `config.host.url`) and the redundant `localhost:3000` double-fallback. Dev uses `config.host?.url ?? localhost:PORT`, prod uses `config.domain` (the public ingress, not the Zephyr URL which lives in the separate `config.host.remoteUrl` field).
+  - `host/src/services/config.ts`: added `readCorsOrigins()` using `Config.array(Config.string(), "CORS_ORIGIN")` with `ConfigProvider.fromEnv`, filtering empty entries, `catchAll` fallback to `[]`.
+  - `host/src/services/program.ts`: single `yield* readCorsOrigins()` at the top of `createStartServer` replaces both the warning-presence check and the `allowedOrigins` parse. One env read instead of two.
+  - `host/src/services/plugins.ts`: `buildAuthBaseVariables` now takes `corsOrigins: string[]`; auth phase reads via `yield* readCorsOrigins()`. Removes the inline `process.env.CORS_ORIGIN?.split(",")` read.
+
+  Behavior changes for `CORS_ORIGIN` edge cases (both more correct): `CORS_ORIGIN=''` now resolves to `[]` (was `[""]`), so the production warning fires for empty string and `allowedOrigins` falls through to host/ui fallback. `CORS_ORIGIN='a,,b'` now resolves to `["a","b"]` (was `["a","","b"]`).
+
+  No public API changes. `PluginResult` shape unchanged. `bun typecheck` clean, biome lint clean, 124/124 host tests pass.
+
+- 58272ad: Fix metadata files being blocked by narrowed static asset regex; standardize public file structure; renderClientShell delegates head data to UI's getRouteHead.
+
+  - `host/src/program.ts`: Added `md` and `webmanifest` to `staticAssetPattern` (fixes regression from DDoS narrowing that blocked `.md` and `.webmanifest` from being proxied as static assets). DRY'd inline regex copy to use the named constant.
+  - `host/src/program.ts`: Refactored `renderClientShell` to accept `HeadData` from the MF-loaded UI router module via `getRouteHead`. Host no longer hardcodes metadata (favicon, manifest, OG tags) — the UI's `__root.tsx` `head()` is the single source of truth. Minimal fallback shell (charset, viewport, title, boot scripts) when module is unavailable.
+  - `packages/everything-dev/src/ui/router.ts`: Added `serializeHeadData` helper to convert structured `HeadData` (meta/links/scripts) to HTML strings for the raw shell.
+  - `ui/public/`: Standardized on 15-file public structure. Renamed icon.svg→near.svg, icon_rev.svg→near_rev.svg, android-chrome-192x192.png→web-app-manifest-192x192.png, android-chrome-512x512.png→web-app-manifest-512x512.png. Generated favicon-96x96.png, logo.png. Removed legacy files (favicon-16x16.png, favicon-32x32.png, logo192.png, logo512.png, logo_rev.svg, logo.svg, manifest.json). Replaced manifest.json with site.webmanifest as single PWA manifest.
+  - `ui/src/routes/__root.tsx`: Updated icon and manifest references to match new filenames.
+  - `ui/public/site.webmanifest`: Merged richer icon set and fields from old manifest.json.
+
+- 58272ad: Security and correctness fixes from codebase audit:
+
+  - **Require `API_DATABASE_URL` in production** — Removed the `:memory:` PGlite default from the API plugin schema. Uses a Zod `refine()` that rejects `pglite:` URLs when `NODE_ENV=production`, preventing silent data loss on restart. Updated `drizzle.config.ts` fallback to throw in production.
+  - **Add warnings to empty catch blocks** — Added `console.warn` to 5 empty `catch {}` blocks across `config.ts` (\_resolved.json parse, package.json name resolution), `orchestrator.ts` (manifest fetch failure), and `cli/upgrade.ts` (plugin config parse and file deletion), turning silent fallbacks into actionable diagnostics.
+  - **Add CSRF protection middleware** — Added `createCsrfMiddleware` to the host server that validates `Origin`/`Referer` headers against the allowed origins list for state-changing methods (POST/PUT/DELETE/PATCH), preventing cross-origin request forgery on cookie-authenticated endpoints.
+
+## 1.13.1
+
+### Patch Changes
+
+- b03bc24: **every-plugin:**
+
+  - Broaden `Effect.annotateLogs({ plugin: pluginId })` to cover the full plugin lifecycle — `usePlugin`, `loadPlugin`, `instantiatePlugin`, and `initializePlugin` — so all logs including Module Federation operations and database migrations are tagged with the plugin's registry key
+  - Convert Module Federation service `console.log` calls to `Effect.logDebug` (registering/loading) and `Effect.logInfo` (registered/loaded) with proper log levels
+  - Refactor `formatORPCError` to return `string | null` instead of calling `console.error` directly, enabling callers to log through Effect's structured system
+  - Make `toPluginRuntimeError` and `wrapORPCError` pure functions (no side effects); add `Effect.tapError` with `Effect.logError` at 4 call sites in `plugin-loader.service.ts` for plugin-aware error logging
+  - Remove `formatPluginError` (dead code after purity refactor)
+  - Remove redundant `Effect.annotateLogs` from `plugin-loader.service.ts` (now covered at runtime level)
+
+  **api:**
+
+  - Convert 3 startup `console.log` calls to `Effect.logInfo` so `[API]` startup messages gain the `plugin=api` annotation
+  - Convert `Effect.log` to `Effect.logInfo` for shutdown
+
+  **host:**
+
+  - Import `logger` wrapper in `plugins.ts` and replace all raw `console.*` calls with `logger.*` (for async contexts) or `Effect.log*` (for Effect generator contexts)
+  - Restructure `catchAll` block to `Effect.gen` for proper `Effect.logError`/`Effect.logWarning` usage
+  - Fix 2 stray `console.*` calls in `program.ts` to use `logger`
+
+  **@everything-dev/apps-plugin:**
+
+  - Convert `console.log` to `Effect.logInfo` for startup message
+  - Convert `Effect.log` to `Effect.logInfo` for shutdown
+
+  **@every-plugin/template:**
+
+  - Convert publish failure `console.log` to `Effect.logWarning` for proper log level and annotation
+  - Remove `[Event]` debug `console.log` from streaming handler; use `getEventMeta` for meaningful event ID filtering instead
+  - Restructure `getById` to `Effect.gen` wrapper with `Effect.logInfo` for service call logging
+
+## 1.13.0
+
+### Minor Changes
+
+- e41dc82: Add DDoS protection middleware to host server
+
+  Adds three layers of DDoS defense to the Hono host server, applied at the edge before any expensive work:
+
+  - **Rate limiter** (`hono-rate-limiter`): 300 requests per 15-min window per IP, skips health checks and static assets. Uses `x-forwarded-for` behind proxy, falls back to socket IP. Configurable via `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX`.
+
+  - **Body limit** (`hono/body-limit`): 10 MB max on API POST/PUT/PATCH payloads. Configurable via `BODY_LIMIT_MAX`.
+
+  - **API timeout** (`hono/timeout`): 30s timeout on API routes only (not SSR streaming). Configurable via `API_TIMEOUT_MS`.
+
+  Also fixes three SSR test failures by adding auth runtime configuration to test helpers used by `runtime-remote.test.ts` and `ssr-bundled-runtime.test.ts`.
+
+- 1368467: Remove auto-generated plugin-sidebar system in favor of manual sidebar items in `_layout.tsx`
+
+  Deleted the entire `sidebar.ts` code generator, `SidebarItem`/`SidebarRole` types, all
+  `sidebar` fields from config/resolution schemas, the `plugin-sidebar.gen.ts` generated file,
+  and all sidebar migration/passthrough logic in the CLI, host runtime, and tenant runtime.
+  Sidebar items are now defined inline in `ui/src/routes/_layout.tsx`.
+
 ## 1.12.2
 
 ### Patch Changes

@@ -22,27 +22,19 @@
         "ALLOW_OVERRIDE",
         "ALLOW_UNTRUSTED_SSR",
         "CSP_STRICT"
-      ],
-      "production": "https://elliot-braem-5712-host-wiki-everything-dev-nearbu-3fb4b4c21-ze.zephyrcloud.app",
-      "integrity": "sha384-jQzuyKdSK4FDEE5neKOanU3F7iag8q15u/FJ74yz/4raMOch2ywr2hcj0pmVFdm2"
+      ]
     },
     "ui": {
-      "development": "local:ui",
-      "production": "https://elliot-braem-5740-ui-wiki-everything-dev-nearbuil-f9e11a61b-ze.zephyrcloud.app",
-      "integrity": "sha384-bACOM66JlXQS8i4qnL1LBcnQdatGXaM/1chR43wQGwCUS6Enmyin1V9XfnJotzxp",
-      "ssr": "https://elliot-braem-5741-ui-wiki-everything-dev-nearbuil-b31545797-ze.zephyrcloud.app",
-      "ssrIntegrity": "sha384-OATL8BVqNuZVcHBCsZDSnfcV38+Owh/x/LTsQMELu6RW8wnLMsMg4HN6jytrChR8"
+      "development": "local:ui"
     },
     "api": {
       "development": "local:api",
       "secrets": [
         "API_DATABASE_URL"
-      ],
-      "production": "https://elliot-braem-5742-api-wiki-everything-dev-nearbui-6121aa880-ze.zephyrcloud.app",
-      "integrity": "sha384-AWHrVaHLXwHcQ97+2OFvj9Aw7WYyyGJ4Nn3poCnwQPXqaAP22/n6Jn3Xhq5/+o4G"
+      ]
     },
     "auth": {
-      "extends": "bos://dev.everything.near/dev.everything.dev#app.auth",
+      "extends": "bos://auth.everything.near/auth.everything.dev",
       "variables": {
         "siwn": {
           "subAccount": {
@@ -63,17 +55,20 @@
   },
   "plugins": {
     "apps": {
-      "development": "local:plugins/apps"
+      "development": "local:plugins/apps",
+      "variables": {
+        "registryNamespace": "dev.everything.near"
+      },
+      "routes": [
+        "ui/src/routes/_layout/apps/**",
+        "ui/src/routes/_layout/index.tsx"
+      ]
     },
     "wiki-editor-collaborative": {
-      "development": "local:plugins/wiki-editor-collaborative",
-      "production": "https://elliot-braem-5710-wiki-editor-collaborative-wiki--8dd495171-ze.zephyrcloud.app",
-      "integrity": "sha384-8N+cO6oJ6Dl/wU80qYzKWdNB3UPB+D3BUChPT+XPPmeyqVTZeDMLgNJbFumCzsP7"
+      "development": "local:plugins/wiki-editor-collaborative"
     },
     "wiki-media": {
-      "development": "local:plugins/wiki-media",
-      "production": "https://elliot-braem-5711-wiki-media-wiki-everything-dev--0374def3d-ze.zephyrcloud.app",
-      "integrity": "sha384-Fj8zMV1DYddL4p43u2pTxdqU06deMHl3xZFKfwKPSHLssMILO1ezKvLR8W9fWPXo"
+      "development": "local:plugins/wiki-media"
     }
   }
 }
